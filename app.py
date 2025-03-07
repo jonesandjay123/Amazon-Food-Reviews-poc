@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 import os
 import requests
 import json
@@ -28,6 +28,11 @@ def get_place_details(place_id):
         return response.json()
     else:
         return None
+
+@app.route('/', methods=['GET'])
+def index():
+    """提供聊天界面的 HTML 頁面"""
+    return render_template('index.html')
 
 @app.route('/query', methods=['POST'])
 def query():
@@ -107,10 +112,17 @@ def query():
         if places_response.status_code == 200:
             try:
                 places_data = places_response.json()
+                # 儲存結果到全局變數，確保有 'places' 欄位
+                if 'places' in places_data:
+                    latest_places_data = places_data['places'][:limit]
+                    print(f"成功儲存 {len(latest_places_data)} 筆地點資料")
+                else:
+                    latest_places_data = []
+                    print("Places API 回傳成功但無 'places' 欄位")
             except Exception as e:
                 print("Error parsing Places API response as JSON:", e)
                 return jsonify({"error": "Places API 回傳資料格式錯誤"}), 500
-            latest_places_data = places_data.get('places', [])[:limit]
+            
             return jsonify({
                 "query": user_query,
                 "status": "success",
@@ -128,22 +140,28 @@ def results():
     try:
         if not latest_places_data:
             return jsonify({"error": "尚未有查詢結果，請先使用 /query 端點進行查詢"}), 400
+        
         formatted_results = []
         for place in latest_places_data:
-            place_details = get_place_details(place['id'])
-            if place_details:
-                name = place_details.get('displayName', {}).get('text', 'N/A')
-                address = place_details.get('formattedAddress', 'N/A')
-                rating = place_details.get('rating', 'N/A')
-                website = place_details.get('websiteUri', 'N/A')
-                opening_hours = place_details.get('regularOpeningHours', {}).get('text', 'N/A')
-                formatted_results.append({
-                    "name": name,
-                    "address": address,
-                    "rating": rating,
-                    "website": website,
-                    "opening_hours": opening_hours
-                })
+            # 直接從 place 數據中提取信息，不再調用 get_place_details
+            name = place.get('displayName', {}).get('text', 'N/A')
+            address = place.get('formattedAddress', 'N/A')
+            rating = place.get('rating', 'N/A')
+            website = place.get('websiteUri', 'N/A')
+            
+            # 處理營業時間
+            opening_hours = 'N/A'
+            if 'regularOpeningHours' in place and 'weekdayDescriptions' in place['regularOpeningHours']:
+                opening_hours = ', '.join(place['regularOpeningHours']['weekdayDescriptions'])
+            
+            formatted_results.append({
+                "name": name,
+                "address": address,
+                "rating": rating,
+                "website": website,
+                "opening_hours": opening_hours
+            })
+        
         return jsonify({
             "query": latest_query,
             "results": formatted_results
@@ -151,6 +169,17 @@ def results():
     except Exception as e:
         print("Overall error in /results:", e)
         return jsonify({"error": str(e)}), 500
+
+@app.route('/debug', methods=['GET'])
+def debug():
+    """調試端點，用於檢視當前存儲的資料"""
+    global latest_query, latest_places_data
+    return jsonify({
+        "latest_query": latest_query,
+        "latest_places_data": latest_places_data,
+        "data_type": str(type(latest_places_data)),
+        "data_length": len(latest_places_data) if isinstance(latest_places_data, list) else 0
+    })
 
 if __name__ == '__main__':
     if not GOOGLE_PLACES_API_KEY:
