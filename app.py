@@ -4,7 +4,7 @@ import requests
 import json
 from dotenv import load_dotenv
 from google import genai  # 新版 SDK 匯入方式
-from google.genai import types  # 如有需要傳入額外設定，可使用
+from google.genai import types  # 如有需要額外設定，可使用
 
 load_dotenv()
 
@@ -13,9 +13,8 @@ app = Flask(__name__)
 GOOGLE_PLACES_API_KEY = os.getenv("GOOGLE_PLACES_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-# 建立 Google GenAI 的 API 客戶端，注意新版 SDK 會從 GOOGLE_API_KEY 環境變數自動抓取，但這裡我們顯性傳入
+# 建立 Google GenAI 的 API 客戶端
 client = genai.Client(api_key=GEMINI_API_KEY)
-# 指定要使用的模型，可根據需求調整，例如 'gemini-2.0-flash'
 MODEL_NAME = 'gemini-2.0-flash'
 
 latest_query = ""
@@ -39,58 +38,60 @@ def query():
         if not user_query:
             return jsonify({"error": "查詢內容不能為空"}), 400
         latest_query = user_query
+
+        # 呼叫 Gemini API 生成結構化查詢
         prompt = f"""
         根據以下自然語言查詢，提取關鍵信息以便進行 Google Places API 查詢。
-        僅返回 JSON 格式，包含這些鍵：location（地點）, keyword（關鍵字）, radius（半徑，以米為單位）, limit（結果數量限制）。
+        請僅回傳 JSON，且僅包含以下鍵：
+            location（地點）,
+            keyword（關鍵字）,
+            radius（半徑，以米為單位）,
+            limit（結果數量限制）。
+        不要額外輸出其他文字。
         查詢: {user_query}
         """
-        # 使用新版 SDK 調用 Gemini API 生成結構化查詢
         response = client.models.generate_content(
             model=MODEL_NAME,
             contents=prompt
         )
+        print("=== Gemini API raw output ===")
+        print(response.text)
         structured_query = json.loads(response.text)
-        params = {
-            'key': GOOGLE_PLACES_API_KEY,
-            'query': structured_query.get('keyword', ''),
-            'locationBias': {
-                "circle": {
-                    "center": {
-                        "latitude": 0.0,
-                        "longitude": 0.0
-                    },
-                    "radius": structured_query.get('radius', 5000.0)
-                }
-            },
-            'includedTypes': [],
-            'languageCode': 'zh-TW',
-            'regionCode': 'TW'
-        }
-        # 如果有指定地點，則利用地理編碼 API 取得座標
-        if 'location' in structured_query and structured_query['location']:
-            geocode_params = {
-                'key': GOOGLE_PLACES_API_KEY,
-                'address': structured_query['location']
-            }
-            geocode_url = "https://maps.googleapis.com/maps/api/geocode/json"
-            geocode_response = requests.get(geocode_url, params=geocode_params)
-            geocode_data = geocode_response.json()
-            if geocode_data['status'] == 'OK':
-                location = geocode_data['results'][0]['geometry']['location']
-                params['locationBias']['circle']['center']['latitude'] = location['lat']
-                params['locationBias']['circle']['center']['longitude'] = location['lng']
+        
+        # 若 Gemini 回傳的 limit 為 null，則預設為 5
+        limit = structured_query.get('limit') if structured_query.get('limit') is not None else 5
+        keyword = structured_query.get('keyword', '')
+        location_str = structured_query.get('location', '')
+        
+        # 建立 Places API 的文字查詢字串
+        # 若有 location，則組合 "keyword in location"，否則僅使用 keyword
+        if location_str:
+            text_query = f"{keyword} in {location_str}"
+        else:
+            text_query = keyword
 
+        # 建立 Places API 的請求主體，依據新版文件只需要 textQuery
+        payload = {
+            "textQuery": text_query
+        }
+        # 依文件要求，使用 HTTP 標頭傳入 API 金鑰與欄位遮罩（欄位中間不得有空格）
         headers = {
-            'Content-Type': 'application/json'
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": GOOGLE_PLACES_API_KEY,
+            "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.rating,places.websiteUri,places.regularOpeningHours"
         }
         places_url = "https://places.googleapis.com/v1/places:searchText"
-        places_response = requests.post(places_url, headers=headers, json=params)
-
+        places_response = requests.post(places_url, headers=headers, json=payload)
+        
+        # 如果 Places API 回傳失敗，除錯印出相關訊息
+        if places_response.status_code != 200:
+            print("=== Places API Response ===")
+            print(places_response.status_code)
+            print(places_response.text)
+        
         if places_response.status_code == 200:
             places_data = places_response.json()
-            latest_places_data = places_data.get('places', [])
-            limit = structured_query.get('limit', 5)
-            latest_places_data = latest_places_data[:limit]
+            latest_places_data = places_data.get('places', [])[:limit]
             return jsonify({
                 "query": user_query,
                 "status": "success",
@@ -116,7 +117,6 @@ def results():
                 rating = place_details.get('rating', 'N/A')
                 website = place_details.get('websiteUri', 'N/A')
                 opening_hours = place_details.get('regularOpeningHours', {}).get('text', 'N/A')
-
                 formatted_results.append({
                     "name": name,
                     "address": address,
@@ -124,7 +124,6 @@ def results():
                     "website": website,
                     "opening_hours": opening_hours
                 })
-
         return jsonify({
             "query": latest_query,
             "results": formatted_results
