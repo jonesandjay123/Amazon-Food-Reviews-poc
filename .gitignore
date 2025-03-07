@@ -1,0 +1,13 @@
+# 環境變數文件，避免洩漏API金鑰
+.env
+.env.example
+
+# Python 虛擬環境（若有使用）
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# VSCode 工作目錄
+.vscode/
