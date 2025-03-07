@@ -3,7 +3,8 @@ import os
 import requests
 import json
 from dotenv import load_dotenv
-import google.generativeai as genai
+from google import genai  # 新版 SDK 匯入方式
+from google.genai import types  # 如有需要傳入額外設定，可使用
 
 load_dotenv()
 
@@ -12,8 +13,10 @@ app = Flask(__name__)
 GOOGLE_PLACES_API_KEY = os.getenv("GOOGLE_PLACES_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-pro')
+# 建立 Google GenAI 的 API 客戶端，注意新版 SDK 會從 GOOGLE_API_KEY 環境變數自動抓取，但這裡我們顯性傳入
+client = genai.Client(api_key=GEMINI_API_KEY)
+# 指定要使用的模型，可根據需求調整，例如 'gemini-2.0-flash'
+MODEL_NAME = 'gemini-2.0-flash'
 
 latest_query = ""
 latest_places_data = []
@@ -41,7 +44,11 @@ def query():
         僅返回 JSON 格式，包含這些鍵：location（地點）, keyword（關鍵字）, radius（半徑，以米為單位）, limit（結果數量限制）。
         查詢: {user_query}
         """
-        response = model.generate_content(prompt)
+        # 使用新版 SDK 調用 Gemini API 生成結構化查詢
+        response = client.models.generate_content(
+            model=MODEL_NAME,
+            contents=prompt
+        )
         structured_query = json.loads(response.text)
         params = {
             'key': GOOGLE_PLACES_API_KEY,
@@ -59,7 +66,7 @@ def query():
             'languageCode': 'zh-TW',
             'regionCode': 'TW'
         }
-        # 如果沒有指定地點，則嘗試使用地理編碼 API 獲取座標
+        # 如果有指定地點，則利用地理編碼 API 取得座標
         if 'location' in structured_query and structured_query['location']:
             geocode_params = {
                 'key': GOOGLE_PLACES_API_KEY,
