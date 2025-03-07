@@ -4,7 +4,7 @@ import requests
 import json
 from dotenv import load_dotenv
 from google import genai  # 新版 SDK 匯入方式
-from google.genai import types  # 如有需要額外設定，可使用
+from google.genai import types  # 用來傳入 GenerateContentConfig
 
 load_dotenv()
 
@@ -39,7 +39,7 @@ def query():
             return jsonify({"error": "查詢內容不能為空"}), 400
         latest_query = user_query
 
-        # 呼叫 Gemini API 生成結構化查詢
+        # 呼叫 Gemini API 生成結構化查詢，強制回傳 JSON 格式
         prompt = f"""
         根據以下自然語言查詢，提取關鍵信息以便進行 Google Places API 查詢。
         請僅回傳 JSON，且僅包含以下鍵：
@@ -50,47 +50,66 @@ def query():
         不要額外輸出其他文字。
         查詢: {user_query}
         """
-        response = client.models.generate_content(
+        gemini_response = client.models.generate_content(
             model=MODEL_NAME,
-            contents=prompt
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json"
+            )
         )
         print("=== Gemini API raw output ===")
-        print(response.text)
-        structured_query = json.loads(response.text)
-        
-        # 若 Gemini 回傳的 limit 為 null，則預設為 5
+        print(gemini_response.text)
+        try:
+            structured_query = json.loads(gemini_response.text)
+        except Exception as e:
+            print("Error parsing Gemini response as JSON:", e)
+            return jsonify({"error": "Gemini API 回傳資料格式錯誤"}), 500
+
+        # 如果 Gemini 回傳的 limit 為 null，則預設為 5
         limit = structured_query.get('limit') if structured_query.get('limit') is not None else 5
         keyword = structured_query.get('keyword', '')
         location_str = structured_query.get('location', '')
         
         # 建立 Places API 的文字查詢字串
-        # 若有 location，則組合 "keyword in location"，否則僅使用 keyword
         if location_str:
             text_query = f"{keyword} in {location_str}"
         else:
             text_query = keyword
 
-        # 建立 Places API 的請求主體，依據新版文件只需要 textQuery
+        print("=== Debug Gemini parsed data ===")
+        print("text_query:", text_query)
+        print("radius:", structured_query.get('radius'))
+        print("limit:", limit)
+
+        # 根據新版文件，Places API 只需要傳入 textQuery
         payload = {
             "textQuery": text_query
         }
-        # 依文件要求，使用 HTTP 標頭傳入 API 金鑰與欄位遮罩（欄位中間不得有空格）
+        print("=== Debug Places API payload ===")
+        print(json.dumps(payload, indent=2))
+
+        # HTTP 標頭中傳入 API 金鑰與欄位遮罩
         headers = {
             "Content-Type": "application/json",
             "X-Goog-Api-Key": GOOGLE_PLACES_API_KEY,
             "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.rating,places.websiteUri,places.regularOpeningHours"
         }
+        print("=== Debug Places API headers ===")
+        print(headers)
+
         places_url = "https://places.googleapis.com/v1/places:searchText"
         places_response = requests.post(places_url, headers=headers, json=payload)
-        
-        # 如果 Places API 回傳失敗，除錯印出相關訊息
-        if places_response.status_code != 200:
-            print("=== Places API Response ===")
-            print(places_response.status_code)
-            print(places_response.text)
-        
+
+        print("=== Places API raw response ===")
+        print("Status code:", places_response.status_code)
+        print("Response text:", places_response.text)
+
         if places_response.status_code == 200:
-            places_data = places_response.json()
+            try:
+                places_data = places_response.json()
+            except Exception as e:
+                print("Error parsing Places API response as JSON:", e)
+                return jsonify({"error": "Places API 回傳資料格式錯誤"}), 500
             latest_places_data = places_data.get('places', [])[:limit]
             return jsonify({
                 "query": user_query,
@@ -100,6 +119,7 @@ def query():
         else:
             return jsonify({"error": f"Places API 請求失敗：{places_response.status_code}"}), 500
     except Exception as e:
+        print("Overall error in /query:", e)
         return jsonify({"error": str(e)}), 500
 
 @app.route('/results', methods=['GET'])
@@ -129,6 +149,7 @@ def results():
             "results": formatted_results
         })
     except Exception as e:
+        print("Overall error in /results:", e)
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
