@@ -21,8 +21,8 @@ document.addEventListener("DOMContentLoaded", function () {
     const loadingElement = addLoadingIndicator();
 
     try {
-      // 發送請求到 /query 端點
-      const queryResponse = await fetch("/query", {
+      // 發送請求到 /api/query 端點
+      const queryResponse = await fetch("/api/query", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -32,28 +32,20 @@ document.addEventListener("DOMContentLoaded", function () {
 
       const queryData = await queryResponse.json();
 
-      if (queryData.status === "success") {
-        // 查詢成功，獲取結果
-        const resultsResponse = await fetch("/results");
-        const resultsData = await resultsResponse.json();
+      // 移除加載指示器
+      messageContainer.removeChild(loadingElement);
 
-        // 移除加載指示器
-        messageContainer.removeChild(loadingElement);
-
-        // 顯示結果
-        if (resultsData.results && resultsData.results.length > 0) {
-          const formattedResults = formatResults(resultsData.results);
-          addMessage("system", formattedResults);
-        } else {
-          addMessage("system", "抱歉，我找不到相關信息。");
-        }
-      } else {
+      // 顯示結果
+      if (queryData.error) {
         // 查詢失敗
-        messageContainer.removeChild(loadingElement);
-        addMessage(
-          "system",
-          `抱歉，查詢失敗：${queryData.error || "未知錯誤"}`
-        );
+        addMessage("system", `抱歉，查詢失敗：${queryData.error}`);
+      } else if (queryData.results && queryData.results.length > 0) {
+        // 顯示查詢結果
+        const formattedResults = formatMovieResults(queryData);
+        addMessage("system", formattedResults);
+      } else {
+        // 沒有結果
+        addMessage("system", "抱歉，我找不到相關電影信息。");
       }
     } catch (error) {
       console.error("Error:", error);
@@ -90,48 +82,79 @@ document.addEventListener("DOMContentLoaded", function () {
     return loadingDiv;
   }
 
-  // 格式化結果
-  function formatResults(results) {
-    // 檢查結果是字符串數組還是對象數組
-    if (typeof results[0] === "string") {
-      // 字符串數組，直接顯示為列表
-      return `<ol>${results
-        .map((result) => `<li>${escapeHTML(result)}</li>`)
-        .join("")}</ol>`;
-    } else {
-      // 對象數組，創建一個更詳細的列表
-      return `<ol>${results
-        .map(
-          (place) => `
-                <li>
-                    <strong>${escapeHTML(place.name)}</strong> - 評分: ${
-            place.rating || "N/A"
-          }<br>
-                    地址: ${escapeHTML(place.address || "N/A")}<br>
-                    ${
-                      place.website
-                        ? `網站: <a href="${escapeHTML(
-                            place.website
-                          )}" target="_blank">${escapeHTML(
-                            place.website
-                          )}</a><br>`
-                        : ""
-                    }
-                    ${
-                      place.opening_hours
-                        ? `營業時間: ${escapeHTML(place.opening_hours)}`
-                        : ""
-                    }
-                </li>
-            `
-        )
-        .join("")}</ol>`;
+  // 格式化電影結果
+  function formatMovieResults(data) {
+    let html = `<p>查詢「${escapeHTML(data.query)}」的結果：</p>`;
+
+    // 如果有解釋的查詢參數，顯示它
+    if (data.interpreted_as) {
+      html += "<p><small>我理解您在查詢：";
+      const params = [];
+      if (data.interpreted_as.director)
+        params.push(`導演「${data.interpreted_as.director}」的電影`);
+      if (data.interpreted_as.actor)
+        params.push(`演員「${data.interpreted_as.actor}」的電影`);
+      if (data.interpreted_as.year)
+        params.push(`${data.interpreted_as.year} 年的電影`);
+      if (data.interpreted_as.genre)
+        params.push(`類型為「${data.interpreted_as.genre}」的電影`);
+      if (data.interpreted_as.keyword)
+        params.push(`包含「${data.interpreted_as.keyword}」的電影`);
+      html += params.join("，") || "所有電影";
+      html += "</small></p>";
     }
+
+    html += `<p>找到 ${data.results_count} 部相關電影：</p><ol>`;
+
+    data.results.forEach((movie) => {
+      html += "<li>";
+
+      // 標題和年份
+      if (movie.title) {
+        html += `<strong>${escapeHTML(movie.title)}</strong>`;
+        if (movie.release_date) {
+          const year = movie.release_date.split("-")[0];
+          html += ` (${year})`;
+        }
+      }
+
+      // 評分
+      if (movie.vote_average) {
+        html += ` - 評分: ${movie.vote_average}`;
+      }
+
+      // 類型
+      if (movie.genres && movie.genres.length > 0) {
+        html += `<br>類型: ${escapeHTML(movie.genres.join(", "))}`;
+      }
+
+      // 演員角色
+      if (movie.character) {
+        html += `<br>飾演: ${escapeHTML(movie.character)}`;
+      }
+
+      // 概述
+      if (movie.overview) {
+        // 只顯示概述的前100個字符
+        const shortOverview =
+          movie.overview.length > 100
+            ? movie.overview.substring(0, 100) + "..."
+            : movie.overview;
+        html += `<br><small>${escapeHTML(shortOverview)}</small>`;
+      }
+
+      html += "</li>";
+    });
+
+    html += "</ol>";
+    return html;
   }
 
   // 轉義 HTML 以防止 XSS 攻擊
   function escapeHTML(str) {
+    if (!str) return "";
     return str
+      .toString()
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")

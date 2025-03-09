@@ -31,6 +31,7 @@ body {
   background-color: #4285f4;
   color: white;
   text-align: center;
+  position: relative;
 }
 
 .chat-header h1 {
@@ -41,6 +42,27 @@ body {
 .chat-header p {
   font-size: 0.9rem;
   opacity: 0.8;
+}
+
+.api-link {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+}
+
+.api-link a {
+  display: inline-block;
+  background-color: rgba(255, 255, 255, 0.2);
+  color: white;
+  text-decoration: none;
+  padding: 5px 12px;
+  border-radius: 15px;
+  font-size: 0.85rem;
+  transition: background-color 0.2s;
+}
+
+.api-link a:hover {
+  background-color: rgba(255, 255, 255, 0.3);
 }
 
 .chat-messages {

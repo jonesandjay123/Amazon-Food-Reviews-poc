@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>地點推薦聊天系統</title>
+    <title>電影資料查詢系統</title>
     <link
       rel="stylesheet"
       href="{{ url_for('static', filename='css/style.css') }}"
@@ -12,14 +12,18 @@
   <body>
     <div class="chat-container">
       <div class="chat-header">
-        <h1>地點推薦助手</h1>
-        <p>使用自然語言詢問有關地點的問題</p>
+        <h1>電影資料查詢系統</h1>
+        <p>使用自然語言詢問有關電影的問題</p>
+        <div class="api-link">
+          <a href="/api" title="API 文檔">API 文檔</a>
+        </div>
       </div>
 
       <div class="chat-messages" id="chat-messages">
         <div class="system-message">
           <p>
-            歡迎使用地點推薦系統！請輸入您的問題，例如：「推薦台北市最好的五家咖啡廳」
+            歡迎使用電影資料查詢系統！請輸入您的問題，例如：「找出克里斯托弗·諾蘭導演的所有電影」或「推薦評分超過
+            8 分的動作片」
           </p>
         </div>
       </div>

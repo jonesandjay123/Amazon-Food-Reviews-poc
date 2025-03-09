@@ -1,4 +1,6 @@
 flask==2.3.3
-requests==2.31.0
 python-dotenv==1.0.0
-google-genai>=1.0.0,<2.0.0
+google-generativeai==0.3.0
+pandas==2.1.0
+numpy==1.24.3
+flasgger==0.9.7b2
