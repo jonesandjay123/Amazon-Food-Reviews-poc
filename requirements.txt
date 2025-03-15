@@ -1,6 +1,9 @@
 flask==2.3.3
-python-dotenv==1.0.0
-google-generativeai==0.3.0
 pandas==2.1.0
-numpy==1.24.3
-flasgger==0.9.7b2
+python-dotenv==1.0.1
+google-genai==1.5.0
+flasgger==0.9.7.1
+kagglehub==0.3.10
+concurrent-log-handler==0.9.24
+gunicorn==22.0.0
+Werkzeug==3.0.3
