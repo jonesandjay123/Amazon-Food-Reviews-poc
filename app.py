@@ -79,23 +79,114 @@ MOVIES_FILE = "movies_metadata.csv"
 CREDITS_FILE = "credits.csv"
 RATINGS_FILE = "ratings_small.csv"
 
+# 設定本地數據目錄
+DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+os.makedirs(DATA_DIR, exist_ok=True)
+
 # 數據緩存
 cache = {
     "directors_map": None,  # 導演到電影的映射
     "actors_map": None,     # 演員到電影的映射
     "genres_map": None,     # 類型到電影的映射
     "directors_list": None, # 所有導演列表
-    "last_load_time": 0     # 上次加載數據的時間戳
+    "last_load_time": 0,    # 上次加載數據的時間戳
+    "query_cache": {}       # SQL查詢結果緩存
 }
 
 # 全局數據查詢函數
 def get_kaggle_data(file_path, sql_query=None, max_retries=3):
-    """使用 kagglehub 從 Kaggle 獲取數據，支持重試機制"""
+    """從本地或Kaggle獲取數據，優先使用本地文件"""
+    # 定義本地文件路徑
+    local_file_path = os.path.join(DATA_DIR, os.path.basename(file_path))
+
+    # 檢查是否有緩存的查詢結果
+    cache_key = f"{file_path}:{sql_query}"
+    if cache_key in cache["query_cache"]:
+        print(f"使用緩存的查詢結果: {cache_key}")
+        return cache["query_cache"][cache_key]
+
+    # 檢查本地文件是否存在
+    if os.path.exists(local_file_path):
+        print(f"本地文件已存在，讀取: {local_file_path}")
+        try:
+            # 讀取本地CSV文件
+            df = pd.read_csv(local_file_path, low_memory=False)
+
+            # 如果提供了SQL查詢，則過濾數據
+            if sql_query:
+                print("在本地數據上應用過濾條件")
+                # 基本SQL解析，僅支持簡單的查詢
+                if "WHERE" in sql_query:
+                    # 處理簡單的條件
+                    conditions = []
+                    if "LIKE" in sql_query:
+                        # 處理模糊匹配
+                        for part in sql_query.split("WHERE")[1].split("AND"):
+                            if "LIKE" in part:
+                                col, val = part.split("LIKE")
+                                col = col.strip()
+                                val = val.replace("'", "").replace("%", "").strip()
+                                conditions.append(f"df['{col}'].str.contains('{val}', na=False)")
+                            elif "=" in part and "CAST" not in part:
+                                # 處理簡單的等於條件
+                                col, val = part.split("=")
+                                col = col.strip()
+                                val = val.strip()
+                                conditions.append(f"df['{col}'] == {val}")
+
+                    # 處理數值比較
+                    if ">=" in sql_query:
+                        for part in sql_query.split("WHERE")[1].split("AND"):
+                            if ">=" in part and "CAST" in part:
+                                # 從 "CAST(column AS FLOAT) >= value" 解析
+                                col = part.split("CAST(")[1].split(" AS")[0].strip()
+                                val = part.split(">=")[1].strip()
+                                conditions.append(f"pd.to_numeric(df['{col}'], errors='coerce') >= {val}")
+
+                    # 應用條件
+                    if conditions:
+                        filter_expr = " & ".join(conditions)
+                        df = eval(f"df[{filter_expr}]")
+
+                # 處理排序
+                if "ORDER BY" in sql_query:
+                    sort_col = sql_query.split("ORDER BY")[1].split()[0].strip()
+                    descending = "DESC" in sql_query
+                    df = df.sort_values(by=sort_col, ascending=not descending)
+
+                # 處理分頁
+                if "LIMIT" in sql_query:
+                    limit_parts = sql_query.split("LIMIT")[1].strip().split()
+                    limit = int(limit_parts[0])
+                    offset = 0
+                    if "OFFSET" in sql_query:
+                        offset = int(sql_query.split("OFFSET")[1].strip())
+                    df = df.iloc[offset:offset+limit]
+
+                # 處理選擇特定列
+                if "SELECT" in sql_query and "SELECT *" not in sql_query:
+                    cols = sql_query.split("SELECT")[1].split("FROM")[0].strip().split(", ")
+                    cols = [c.strip() for c in cols]
+                    # 檢查列是否存在
+                    valid_cols = [c for c in cols if c in df.columns]
+                    df = df[valid_cols]
+
+            # 緩存查詢結果
+            if not df.empty:
+                cache["query_cache"][cache_key] = df
+
+            return df
+        except Exception as e:
+            print(f"讀取本地文件出錯: {e}，嘗試從Kaggle獲取")
+    else:
+        print(f"本地文件不存在: {local_file_path}，從Kaggle下載")
+
+    # 如果本地文件不存在或讀取失敗，從Kaggle獲取
     retries = 0
     while retries < max_retries:
         try:
             if sql_query:
-                print(f"執行 SQL 查詢: {sql_query}")
+                print(f"執行 Kaggle SQL 查詢: {sql_query}")
                 df = kagglehub.load_dataset(
                     KaggleDatasetAdapter.PANDAS,
                     KAGGLE_DATASET,
@@ -109,9 +200,14 @@ def get_kaggle_data(file_path, sql_query=None, max_retries=3):
                     file_path
                 )
 
-            # 確認數據不為空
-            if df.empty:
-                print(f"警告：從 {file_path} 獲取的數據為空")
+            # 確認數據不為空並保存到本地
+            if not df.empty and not os.path.exists(local_file_path):
+                print(f"保存數據到本地: {local_file_path}")
+                df.to_csv(local_file_path, index=False)
+
+            # 緩存查詢結果
+            if not df.empty:
+                cache["query_cache"][cache_key] = df
 
             return df
         except Exception as e:
@@ -155,6 +251,24 @@ def parse_json_field(json_str, key=None):
         print(f"解析 JSON 字段時出錯: {e}")
         return []
 
+def check_or_download_datasets():
+    """檢查本地數據文件，如果不存在則從Kaggle下載"""
+    print("檢查是否需要從 Kaggle 下載數據...")
+    for file_name in [MOVIES_FILE, CREDITS_FILE, RATINGS_FILE]:
+        local_path = os.path.join(DATA_DIR, file_name)
+        if not os.path.exists(local_path):
+            print(f"數據文件不存在: {file_name}，將從Kaggle下載")
+            try:
+                df = get_kaggle_data(file_name)
+                if not df.empty:
+                    print(f"成功下載並保存: {file_name}")
+                else:
+                    print(f"下載失敗: {file_name}")
+            except Exception as e:
+                print(f"下載 {file_name} 時出錯: {e}")
+        else:
+            print(f"數據文件已存在: {file_name}")
+
 def load_data():
     """載入並預處理電影數據，建立查詢優化的緩存"""
     global cache
@@ -162,6 +276,10 @@ def load_data():
     current_time = time.time()
     if cache["last_load_time"] > 0 and (current_time - cache["last_load_time"]) < 3600:
         return
+
+    # 檢查數據文件是否存在
+    check_or_download_datasets()
+
     print("開始加載數據並建立緩存...")
     try:
         # 使用並行處理加速數據加載
@@ -930,6 +1048,17 @@ if __name__ == "__main__":
         print("錯誤：未設置 GEMINI_API_KEY 環境變數")
         exit(1)
 
+    print("初始化電影推薦系統...")
+    check_or_download_datasets()
+    print("檢查或創建數據目錄...")
+    os.makedirs(DATA_DIR, exist_ok=True)
+    print("數據初始化完成")
+
     # 使用環境變數來控制 debug 模式，預設為 False（安全模式）
     debug_mode = os.getenv("FLASK_DEBUG", "False").lower() == "true"
+
+    # 開始加載數據
+    print("開始加載數據...")
+    load_data()
+
     app.run(debug=debug_mode)
