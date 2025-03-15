@@ -6,7 +6,7 @@ import pandas as pd
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
 from google import genai  # 新版 SDK 匯入方式
-from google.genai import types  # 用來傳入 GenerateContentConfig
+from google.genai import types  # 用於傳入 GenerateContentConfig
 from flasgger import Swagger, swag_from
 
 # 載入環境變數
