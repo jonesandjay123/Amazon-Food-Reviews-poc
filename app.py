@@ -89,27 +89,57 @@ cache = {
 }
 
 # 全局數據查詢函數
-def get_kaggle_data(file_path, sql_query=None):
-    """使用 kagglehub 從 Kaggle 獲取數據"""
-    try:
-        if sql_query:
-            print(f"執行 SQL 查詢: {sql_query}")
-            df = kagglehub.load_dataset(
-                KaggleDatasetAdapter.PANDAS,
-                KAGGLE_DATASET,
-                file_path,
-                sql_query=sql_query
-            )
-        else:
-            df = kagglehub.load_dataset(
-                KaggleDatasetAdapter.PANDAS,
-                KAGGLE_DATASET,
-                file_path
-            )
-        return df
-    except Exception as e:
-        print(f"獲取 Kaggle 數據時發生錯誤: {e}")
-        return pd.DataFrame()
+def get_kaggle_data(file_path, sql_query=None, max_retries=3):
+    """使用 kagglehub 從 Kaggle 獲取數據，支持重試機制"""
+    retries = 0
+    while retries < max_retries:
+        try:
+            if sql_query:
+                print(f"執行 SQL 查詢: {sql_query}")
+                df = kagglehub.load_dataset(
+                    KaggleDatasetAdapter.PANDAS,
+                    KAGGLE_DATASET,
+                    file_path,
+                    sql_query=sql_query
+                )
+            else:
+                df = kagglehub.load_dataset(
+                    KaggleDatasetAdapter.PANDAS,
+                    KAGGLE_DATASET,
+                    file_path
+                )
+
+            # 確認數據不為空
+            if df.empty:
+                print(f"警告：從 {file_path} 獲取的數據為空")
+
+            return df
+        except Exception as e:
+            retries += 1
+            error_msg = f"獲取 Kaggle 數據時發生錯誤 (嘗試 {retries}/{max_retries}): {e}"
+            print(error_msg)
+
+            # 如果文件不存在，嘗試清除緩存
+            if "No such file or directory" in str(e) and retries < max_retries:
+                cache_dir = os.path.expanduser("~/.cache/kagglehub")
+                print(f"嘗試清除 Kaggle 緩存目錄: {cache_dir}")
+                try:
+                    # 清除特定文件的緩存
+                    kaggle_file_cache = os.path.join(cache_dir, "datasets",
+                                                    KAGGLE_DATASET.replace("/", os.sep),
+                                                    "versions", "7", file_path)
+                    if os.path.exists(os.path.dirname(kaggle_file_cache)):
+                        print(f"清除文件緩存: {kaggle_file_cache}")
+                        # 嘗試重新下載
+                    time.sleep(2)  # 短暫延遲後重試
+                except Exception as cache_err:
+                    print(f"清除緩存時出錯: {cache_err}")
+
+            if retries >= max_retries:
+                print(f"放棄獲取數據: {file_path}")
+                return pd.DataFrame()  # 返回空的DataFrame
+
+            time.sleep(2)  # 短暫延遲後重試
 
 def parse_json_field(json_str, key=None):
     """解析 JSON 格式的字段"""
@@ -717,7 +747,11 @@ def query_movies():
         # 如果查詢指定了演員
         if "actor" in structured_query and structured_query["actor"]:
             actor_response = get_actor_movies(structured_query["actor"])
-            actor_data = json.loads(actor_response.data)
+            # 修復：檢查返回值類型並正確處理
+            if isinstance(actor_response, tuple):
+                actor_data = json.loads(actor_response[0].data)
+            else:
+                actor_data = json.loads(actor_response.data)
             if "movies" in actor_data:
                 # 標記結果來源
                 for movie in actor_data["movies"]:
@@ -728,7 +762,11 @@ def query_movies():
         if "director" in structured_query and structured_query["director"]:
             print(f"嘗試搜索導演: {structured_query['director']}")
             director_response = get_director_movies(structured_query["director"])
-            director_data = json.loads(director_response.data)
+            # 修復：檢查返回值類型並正確處理
+            if isinstance(director_response, tuple):
+                director_data = json.loads(director_response[0].data)
+            else:
+                director_data = json.loads(director_response.data)
             print(f"導演搜索結果: {director_data}")
             if "movies" in director_data:
                 # 標記結果來源
@@ -755,7 +793,11 @@ def query_movies():
             # 如果有關鍵字，使用搜索 API
             if "keyword" in structured_query and structured_query["keyword"]:
                 search_response = search_movies()
-                search_data = json.loads(search_response.data)
+                # 修復：檢查返回值類型並正確處理
+                if isinstance(search_response, tuple):
+                    search_data = json.loads(search_response[0].data)
+                else:
+                    search_data = json.loads(search_response.data)
                 if "results" in search_data:
                     # 標記結果來源
                     for movie in search_data["results"]:
@@ -764,7 +806,11 @@ def query_movies():
             else:
                 # 使用電影 API 進行過濾
                 movies_response = get_movies()
-                movies_data = json.loads(movies_response.data)
+                # 修復：檢查返回值類型並正確處理
+                if isinstance(movies_response, tuple):
+                    movies_data = json.loads(movies_response[0].data)
+                else:
+                    movies_data = json.loads(movies_response.data)
                 if "results" in movies_data:
                     # 標記結果來源
                     for movie in movies_data["results"]:
