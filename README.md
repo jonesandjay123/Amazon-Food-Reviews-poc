@@ -1,213 +1,209 @@
 # Amazon Fine Food Reviews API
 
-基於 Kaggle Amazon Fine Food Reviews 數據集的 RESTful API，支持食品評論查詢，以及使用 Gemini API 的自然語言查詢。
+A RESTful API based on the Kaggle Amazon Fine Food Reviews dataset, supporting food review queries and natural language queries using the Gemini API.
 
-## 主要特點
+## Key Features
 
-- 🍕 使用 SQLite 資料庫存取 Amazon 食品評論數據
-- 🔍 高效的查詢緩存機制，提升查詢速度
-- 💬 集成 Google Gemini API 進行自然語言處理
-- 📚 完整的 Swagger API 文檔
-- 🧠 智能評論搜索與分析
+- 🍕 Access Amazon food review data using SQLite database
+- 🔍 Efficient query caching mechanism for improved query speed
+- 💬 Google Gemini API integration for natural language processing
+- 📚 Complete Swagger API documentation
+- 🧠 Intelligent review search and analysis
 
-## 運行環境設置
+## Environment Setup
 
-### 前置條件
+### Prerequisites
 
 - Python 3.9+
-- Kaggle 帳號和 API 密鑰
-- Google Gemini API 密鑰
+- Kaggle account and API key
+- Google Gemini API key
 
-### 安裝步驟
+### Installation Steps
 
-1. **克隆本倉庫**：
+1. **Clone this repository**:
 
    ```bash
    git clone <repository-url>
    cd food-reviews-api
    ```
 
-2. **建立並啟用虛擬環境**：
+2. **Create and activate virtual environment**:
 
    ```bash
    python -m venv venv
-   source venv/bin/activate  # 在 Windows 上使用 venv\Scripts\activate
+   source venv/bin/activate  # On Windows, use venv\Scripts\activate
    ```
 
-3. **安裝依賴**：
+3. **Install dependencies**:
 
    ```bash
    pip install -r requirements.txt
    ```
 
-4. **設置環境變數**：
-   建立 `.env` 文件並添加以下內容：
+4. **Set up environment variables**:
+   Create a `.env` file and add the following:
    ```
    GEMINI_API_KEY=your_gemini_api_key_here
    ```
 
-### Kaggle API 設置
+### Kaggle API Setup
 
-1. **獲取 Kaggle API 密鑰**：
-   - Kaggle API 密鑰通常存放在 `~/.kaggle/kaggle.json` 文件中
-   - 如果尚未設置，請登錄 [Kaggle](https://www.kaggle.com/)，點擊右上角您的頭像 > Account > API > Create New API Token
+1. **Get Kaggle API key**:
+   - Kaggle API keys are typically stored in the `~/.kaggle/kaggle.json` file
+   - If not yet set up, log in to [Kaggle](https://www.kaggle.com/), click on your profile picture in the top right > Account > API > Create New API Token
 
-### 下載數據
+### Download Data
 
-#### 選項1：使用提供的腳本（推薦）
-執行以下命令下載並解壓 Amazon Fine Food Reviews 數據集：
+#### Option 1: Using the provided script (recommended)
+Run the following commands to download and extract the Amazon Fine Food Reviews dataset:
 
 ```bash
 chmod +x download_data.sh
 ./download_data.sh
 ```
 
-這將下載數據庫文件並將其解壓到 `data` 目錄中。
+This will download the database file and extract it to the `data` directory.
 
-#### 選項2：手動下載
-如果您無法使用 Kaggle CLI 或遇到問題，可以手動下載數據：
+#### Option 2: Manual download
+1. Manually download the dataset from Kaggle: [Amazon Fine Food Reviews](https://www.kaggle.com/datasets/snap/amazon-fine-food-reviews)
+2. Extract the `database.sqlite` file
+3. Create a `data` directory in your project root if it doesn't exist
+4. Place the `database.sqlite` file in the `data` directory
 
-1. 手動從 Kaggle 下載數據集：[Amazon Fine Food Reviews](https://www.kaggle.com/datasets/snap/amazon-fine-food-reviews)
-2. 解壓縮下載的文件，獲取 `database.sqlite` 文件
-3. 如果項目根目錄中沒有 `data` 目錄，請創建一個
-4. 將 `database.sqlite` 文件放入 `data` 目錄中
+## Running the Application
 
-## 運行應用
-
-啟動 Flask 應用：
+Start the Flask application:
 
 ```bash
 python app.py
 ```
 
-應用會在 http://localhost:5000 運行。
+The application will run at http://localhost:5000.
 
-## 使用 Gemini API 自然語言查詢
+## Using Gemini API Natural Language Queries
 
-本系統集成了 Google Gemini API，可以用自然語言查詢食品評論數據。這些功能可以通過聊天界面 (http://localhost:5000/) 或 API 端點使用。
+This system integrates Google Gemini API to query food review data using natural language. These features can be accessed through the chat interface (http://localhost:5000/) or the API endpoint.
 
-### 可用的自然語言查詢示例：
+### Sample Natural Language Queries:
 
-1. **基於關鍵詞搜索**：
-   - "找出有關巧克力的評論"
-   - "顯示包含'delicious'的評論"
+1. **Keyword-based searches**:
+   - "Find reviews about chocolate"
+   - "Show reviews containing 'delicious'"
 
-2. **基於評分過濾**：
-   - "找出五星評分的巧克力評論"
-   - "顯示評分大於3星的食品評論"
+2. **Rating-based filtering**:
+   - "Find 5-star chocolate reviews"
+   - "Show food reviews with ratings higher than 3 stars"
 
-3. **特定產品查詢**：
-   - "找出產品ID為B001E4KFG0的所有評論"
-   - "這個產品B000LQOCH0收到了哪些好評？"
+3. **Specific product queries**:
+   - "Find all reviews for product ID B001E4KFG0"
+   - "What positive reviews did this product B000LQOCH0 receive?"
 
-4. **用戶評論分析**：
-   - "顯示用戶A1RSDE90N6RSZF的所有評論"
-   - "哪些用戶給出了最多的五星評價？"
+4. **User review analysis**:
+   - "Show all reviews by user A1RSDE90N6RSZF"
+   - "Which users gave the most 5-star ratings?"
 
-5. **情感分析**：
-   - "找出對巧克力最正面的評論"
-   - "有哪些對這個產品B005IGVBPK的負面評論？"
+5. **Sentiment analysis**:
+   - "Find the most positive reviews for chocolate"
+   - "What negative reviews are there for this product B005IGVBPK?"
 
-6. **綜合查詢**：
-   - "找出2010年發表的對巧克力的五星評論"
-   - "顯示評分為1星且評論包含'disappointed'的食品評論"
+6. **Combined queries**:
+   - "Find 5-star chocolate reviews from 2010"
+   - "Show 1-star reviews that contain 'disappointed'"
 
-### Gemini API 如何工作：
+### How Gemini API Works:
 
-系統會將您的自然語言查詢發送到 Gemini API，Gemini 會解析查詢並提取關鍵參數：
-- 關鍵詞 (keyword)
-- 評分範圍 (min_score, max_score)
-- 產品識別符 (product)
-- 用戶識別符 (user)
-- 情感傾向 (sentiment)
+The system sends your natural language query to the Gemini API, which parses the query and extracts key parameters:
+- Keywords (keyword)
+- Rating range (min_score, max_score)
+- Product identifiers (product)
+- User identifiers (user)
+- Sentiment orientation (sentiment)
 
-然後，系統使用這些參數構建 SQL 查詢，從數據庫中獲取相關評論。
+Then, the system uses these parameters to construct SQL queries to retrieve relevant reviews from the database.
 
-## 測試 API
+## Testing the API
 
-可以通過以下方式測試 API：
+You can test the API in several ways:
 
-### 使用瀏覽器
+### Using a Browser
 
-1. 訪問 API 文檔：http://localhost:5000/api/docs/
-2. 使用聊天界面：http://localhost:5000/
+1. Access the API documentation: http://localhost:5000/api/docs/
+2. Use the chat interface: http://localhost:5000/
 
-### 使用 curl
+### Using curl
 
-1. **測試自然語言查詢**：
+1. **Test natural language queries**:
 
    ```bash
    curl -X POST http://localhost:5000/api/query \
      -H "Content-Type: application/json" \
-     -d '{"query":"找出有關巧克力的五星評論"}'
+     -d '{"query":"Find 5-star reviews for chocolate"}'
    ```
 
-2. **獲取評論列表**：
+2. **Get review list**:
 
    ```bash
    curl http://localhost:5000/api/reviews?limit=10&min_score=5
    ```
 
-3. **獲取特定產品的評論**：
+3. **Get reviews for a specific product**:
 
    ```bash
    curl http://localhost:5000/api/product/B001E4KFG0
    ```
 
-4. **搜索評論**：
+4. **Search reviews**:
 
    ```bash
    curl http://localhost:5000/api/search?q=delicious
    ```
 
-5. **檢查系統狀態**：
+5. **Check system status**:
    ```bash
    curl http://localhost:5000/api/debug
    ```
 
-## 數據集信息
+## Dataset Information
 
-本項目使用 Kaggle 的 "Amazon Fine Food Reviews" 數據集，包含來自 Amazon 的約 568,454 條食品評論：
+This project uses the "Amazon Fine Food Reviews" dataset from Kaggle, containing approximately 568,454 food reviews from Amazon:
 https://www.kaggle.com/datasets/snap/amazon-fine-food-reviews
 
-數據庫文件（`database.sqlite`）包含以下信息：
-- 產品評論文本和評分 (1-5 星)
-- 產品信息
-- 用戶信息
-- 評論時間和摘要
+The database file (`database.sqlite`) contains the following information:
+- Product review text and rating (1-5 stars)
+- Product information
+- User information
+- Review time and summary
 
-## 故障排除
+## Troubleshooting
 
-1. **Kaggle API 驗證錯誤**：
-   - 確認 `~/.kaggle/kaggle.json` 文件存在並有正確的權限
-   - 如果使用手動下載方法，可以忽略此錯誤
+1. **Kaggle API authentication error**:
+   - Verify that the `~/.kaggle/kaggle.json` file exists and has the correct permissions
 
-2. **數據庫文件不存在**：
-   - 執行 `./download_data.sh` 下載數據庫文件
-   - 或按照「選項2：手動下載」中的步驟手動下載
-   - 確認 `data/database.sqlite` 文件存在
+2. **Database file not found**:
+   - Run `./download_data.sh` to download the database file
+   - Verify that the `data/database.sqlite` file exists
 
-3. **Gemini API 錯誤**：
-   - 確認 `.env` 文件中 `GEMINI_API_KEY` 設置正確
-   - 檢查 API 密鑰是否有效，以及使用限制是否達到上限
+3. **Gemini API errors**:
+   - Confirm that the `GEMINI_API_KEY` is correctly set in the `.env` file
+   - Check if the API key is valid and whether usage limits have been reached
 
-## API 端點列表
+## API Endpoint List
 
-### 評論查詢
+### Review Queries
 
-- `GET /api/reviews` - 獲取評論列表（支持分頁和評分過濾）
-- `GET /api/reviews/{review_id}` - 獲取特定評論詳情
+- `GET /api/reviews` - Get review list (supports pagination and rating filtering)
+- `GET /api/reviews/{review_id}` - Get specific review details
 
-### 產品和用戶
+### Products and Users
 
-- `GET /api/product/{product_id}` - 獲取特定產品的評論
-- `GET /api/user/{user_id}` - 獲取特定用戶的評論
+- `GET /api/product/{product_id}` - Get reviews for a specific product
+- `GET /api/user/{user_id}` - Get reviews by a specific user
 
-### 搜索
+### Search
 
-- `GET /api/search?q={query}` - 基本評論搜索
-- `POST /api/query` - 自然語言查詢（使用 Gemini API）
+- `GET /api/search?q={query}` - Basic review search
+- `POST /api/query` - Natural language query (using Gemini API)
 
-### 系統
+### System
 
-- `GET /api/debug` - 檢查系統狀態
+- `GET /api/debug` - Check system status 
