@@ -1,7 +1,8 @@
-import ast
-import json
 import os
+import json
 import time
+import sqlite3
+from pathlib import Path
 
 import pandas as pd
 from dotenv import load_dotenv
@@ -9,9 +10,6 @@ from flask import Flask, jsonify, render_template, request, send_from_directory
 from google import genai  # 新版 SDK 匯入方式
 from google.genai import types  # 用於傳入 GenerateContentConfig
 from flasgger import Swagger, swag_from
-import kagglehub
-from kagglehub import KaggleDatasetAdapter
-import concurrent.futures
 
 # 載入環境變數
 load_dotenv()
@@ -36,8 +34,8 @@ swagger_config = {
 
 swagger_template = {
     "info": {
-        "title": "電影數據 API",
-        "description": "使用電影數據集實現的 RESTful API，支持各種電影查詢功能",
+        "title": "Amazon Fine Food Reviews API",
+        "description": "使用Amazon Fine Food Reviews數據實現的RESTful API，支持各種食品評論查詢功能",
         "version": "1.0.0",
         "contact": {
             "name": "API 支持",
@@ -46,16 +44,16 @@ swagger_template = {
     },
     "tags": [
         {
-            "name": "電影列表",
-            "description": "獲取電影列表和詳細信息"
+            "name": "評論列表",
+            "description": "獲取評論列表和詳細信息"
         },
         {
-            "name": "演員和導演",
-            "description": "獲取特定演員或導演的電影"
+            "name": "產品和用戶",
+            "description": "獲取特定產品或用戶的評論"
         },
         {
             "name": "搜索",
-            "description": "搜索電影和自然語言查詢"
+            "description": "搜索評論和自然語言查詢"
         },
         {
             "name": "系統",
@@ -73,344 +71,92 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 client = genai.Client(api_key=GEMINI_API_KEY)
 MODEL_NAME = "gemini-2.0-flash"
 
-# 定義 Kaggle 數據集信息
-KAGGLE_DATASET = "rounakbanik/the-movies-dataset"
-MOVIES_FILE = "movies_metadata.csv"
-CREDITS_FILE = "credits.csv"
-RATINGS_FILE = "ratings_small.csv"
-
-# 設定本地數據目錄
+# 設定資料庫路徑
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+DB_PATH = os.path.join(DATA_DIR, "database.sqlite")
+
+# 確保資料目錄存在
 os.makedirs(DATA_DIR, exist_ok=True)
 
-# 數據緩存
+# 查詢結果緩存
 cache = {
-    "directors_map": None,  # 導演到電影的映射
-    "actors_map": None,     # 演員到電影的映射
-    "genres_map": None,     # 類型到電影的映射
-    "directors_list": None, # 所有導演列表
-    "last_load_time": 0,    # 上次加載數據的時間戳
-    "query_cache": {}       # SQL查詢結果緩存
+    "query_cache": {},  # 查詢結果緩存
+    "last_load_time": 0  # 上次加載數據的時間戳
 }
 
-# 全局數據查詢函數
-def get_kaggle_data(file_path, sql_query=None, max_retries=3):
-    """從本地或Kaggle獲取數據，優先使用本地文件"""
-    # 定義本地文件路徑
-    local_file_path = os.path.join(DATA_DIR, os.path.basename(file_path))
+# 連接到 SQLite 資料庫
+def get_db_connection():
+    """創建並返回一個SQLite資料庫連接"""
+    if not os.path.exists(DB_PATH):
+        raise FileNotFoundError(f"找不到資料庫文件: {DB_PATH}。請先運行download_data.sh下載數據。")
+    
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row  # 讓結果以字典形式返回
+    return conn
 
-    # 檢查是否有緩存的查詢結果
-    cache_key = f"{file_path}:{sql_query}"
-    if cache_key in cache["query_cache"]:
-        print(f"使用緩存的查詢結果: {cache_key}")
+def execute_query(query, params=None, cache_key=None):
+    """執行SQLite查詢，支持緩存結果"""
+    # 如果提供了緩存鍵且查詢結果已緩存，則直接返回緩存結果
+    if cache_key and cache_key in cache["query_cache"]:
+        print(f"使用緩存結果: {cache_key}")
         return cache["query_cache"][cache_key]
-
-    # 檢查本地文件是否存在
-    if os.path.exists(local_file_path):
-        print(f"本地文件已存在，讀取: {local_file_path}")
-        try:
-            # 讀取本地CSV文件
-            df = pd.read_csv(local_file_path, low_memory=False)
-
-            # 如果提供了SQL查詢，則過濾數據
-            if sql_query:
-                print("在本地數據上應用過濾條件")
-                # 基本SQL解析，僅支持簡單的查詢
-                if "WHERE" in sql_query:
-                    # 處理簡單的條件
-                    conditions = []
-                    if "LIKE" in sql_query:
-                        # 處理模糊匹配
-                        for part in sql_query.split("WHERE")[1].split("AND"):
-                            if "LIKE" in part:
-                                col, val = part.split("LIKE")
-                                col = col.strip()
-                                val = val.replace("'", "").replace("%", "").strip()
-                                conditions.append(f"df['{col}'].str.contains('{val}', na=False)")
-                            elif "=" in part and "CAST" not in part:
-                                # 處理簡單的等於條件
-                                col, val = part.split("=")
-                                col = col.strip()
-                                val = val.strip()
-                                conditions.append(f"df['{col}'] == {val}")
-
-                    # 處理數值比較
-                    if ">=" in sql_query:
-                        for part in sql_query.split("WHERE")[1].split("AND"):
-                            if ">=" in part and "CAST" in part:
-                                # 從 "CAST(column AS FLOAT) >= value" 解析
-                                col = part.split("CAST(")[1].split(" AS")[0].strip()
-                                val = part.split(">=")[1].strip()
-                                conditions.append(f"pd.to_numeric(df['{col}'], errors='coerce') >= {val}")
-
-                    # 應用條件
-                    if conditions:
-                        filter_expr = " & ".join(conditions)
-                        df = eval(f"df[{filter_expr}]")
-
-                # 處理排序
-                if "ORDER BY" in sql_query:
-                    sort_col = sql_query.split("ORDER BY")[1].split()[0].strip()
-                    descending = "DESC" in sql_query
-                    df = df.sort_values(by=sort_col, ascending=not descending)
-
-                # 處理分頁
-                if "LIMIT" in sql_query:
-                    limit_parts = sql_query.split("LIMIT")[1].strip().split()
-                    limit = int(limit_parts[0])
-                    offset = 0
-                    if "OFFSET" in sql_query:
-                        offset = int(sql_query.split("OFFSET")[1].strip())
-                    df = df.iloc[offset:offset+limit]
-
-                # 處理選擇特定列
-                if "SELECT" in sql_query and "SELECT *" not in sql_query:
-                    cols = sql_query.split("SELECT")[1].split("FROM")[0].strip().split(", ")
-                    cols = [c.strip() for c in cols]
-                    # 檢查列是否存在
-                    valid_cols = [c for c in cols if c in df.columns]
-                    df = df[valid_cols]
-
-            # 緩存查詢結果
-            if not df.empty:
-                cache["query_cache"][cache_key] = df
-
-            return df
-        except Exception as e:
-            print(f"讀取本地文件出錯: {e}，嘗試從Kaggle獲取")
-    else:
-        print(f"本地文件不存在: {local_file_path}，從Kaggle下載")
-
-    # 如果本地文件不存在或讀取失敗，從Kaggle獲取
-    retries = 0
-    while retries < max_retries:
-        try:
-            if sql_query:
-                print(f"執行 Kaggle SQL 查詢: {sql_query}")
-                df = kagglehub.load_dataset(
-                    KaggleDatasetAdapter.PANDAS,
-                    KAGGLE_DATASET,
-                    file_path,
-                    sql_query=sql_query
-                )
-            else:
-                df = kagglehub.load_dataset(
-                    KaggleDatasetAdapter.PANDAS,
-                    KAGGLE_DATASET,
-                    file_path
-                )
-
-            # 確認數據不為空並保存到本地
-            if not df.empty and not os.path.exists(local_file_path):
-                print(f"保存數據到本地: {local_file_path}")
-                df.to_csv(local_file_path, index=False)
-
-            # 緩存查詢結果
-            if not df.empty:
-                cache["query_cache"][cache_key] = df
-
-            return df
-        except Exception as e:
-            retries += 1
-            error_msg = f"獲取 Kaggle 數據時發生錯誤 (嘗試 {retries}/{max_retries}): {e}"
-            print(error_msg)
-
-            # 如果文件不存在，嘗試清除緩存
-            if "No such file or directory" in str(e) and retries < max_retries:
-                cache_dir = os.path.expanduser("~/.cache/kagglehub")
-                print(f"嘗試清除 Kaggle 緩存目錄: {cache_dir}")
-                try:
-                    # 清除特定文件的緩存
-                    kaggle_file_cache = os.path.join(cache_dir, "datasets",
-                                                    KAGGLE_DATASET.replace("/", os.sep),
-                                                    "versions", "7", file_path)
-                    if os.path.exists(os.path.dirname(kaggle_file_cache)):
-                        print(f"清除文件緩存: {kaggle_file_cache}")
-                        # 嘗試重新下載
-                    time.sleep(2)  # 短暫延遲後重試
-                except Exception as cache_err:
-                    print(f"清除緩存時出錯: {cache_err}")
-
-            if retries >= max_retries:
-                print(f"放棄獲取數據: {file_path}")
-                return pd.DataFrame()  # 返回空的DataFrame
-
-            time.sleep(2)  # 短暫延遲後重試
-
-def parse_json_field(json_str, key=None):
-    """解析 JSON 格式的字段"""
+    
     try:
-        if isinstance(json_str, str):
-            data = ast.literal_eval(json_str)
-            if key and isinstance(data, list):
-                return [item[key] for item in data if key in item]
-            return data
-        return json_str
-    except (ValueError, SyntaxError, TypeError) as e:
-        # 記錄錯誤但回傳空列表以避免中斷處理
-        print(f"解析 JSON 字段時出錯: {e}")
-        return []
-
-def check_or_download_datasets():
-    """檢查本地數據文件，如果不存在則從Kaggle下載"""
-    print("檢查是否需要從 Kaggle 下載數據...")
-    for file_name in [MOVIES_FILE, CREDITS_FILE, RATINGS_FILE]:
-        local_path = os.path.join(DATA_DIR, file_name)
-        if not os.path.exists(local_path):
-            print(f"數據文件不存在: {file_name}，將從Kaggle下載")
-            try:
-                df = get_kaggle_data(file_name)
-                if not df.empty:
-                    print(f"成功下載並保存: {file_name}")
-                else:
-                    print(f"下載失敗: {file_name}")
-            except Exception as e:
-                print(f"下載 {file_name} 時出錯: {e}")
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        if params:
+            cursor.execute(query, params)
         else:
-            print(f"數據文件已存在: {file_name}")
-
-def load_data():
-    """載入並預處理電影數據，建立查詢優化的緩存"""
-    global cache
-    # 檢查是否需要刷新數據緩存（每小時刷新一次）
-    current_time = time.time()
-    if cache["last_load_time"] > 0 and (current_time - cache["last_load_time"]) < 3600:
-        return
-
-    # 檢查數據文件是否存在
-    check_or_download_datasets()
-
-    print("開始加載數據並建立緩存...")
-    try:
-        # 使用並行處理加速數據加載
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            # 獲取導演數據
-            future_directors = executor.submit(
-                get_kaggle_data,
-                CREDITS_FILE,
-                "SELECT id, crew FROM credits"
-            )
-            # 獲取電影元數據
-            future_movies = executor.submit(
-                get_kaggle_data,
-                MOVIES_FILE,
-                "SELECT id, title, release_date, genres, vote_average, overview, revenue, budget, runtime FROM movies_metadata"
-            )
-            # 獲取演員數據
-            future_cast = executor.submit(
-                get_kaggle_data,
-                CREDITS_FILE,
-                "SELECT id, cast FROM credits"
-            )
-            # 等待所有數據獲取完成
-            credits_df_crew = future_directors.result()
-            movies_df = future_movies.result()
-            credits_df_cast = future_cast.result()
-        # 數據預處理
-        if not movies_df.empty:
-            # 轉換 ID 為整數以便匹配
-            movies_df["id"] = pd.to_numeric(movies_df["id"], errors="coerce")
-            # 解析 genres 欄位
-            movies_df["genres"] = movies_df["genres"].apply(
-                lambda x: parse_json_field(x, "name") if pd.notnull(x) else []
-            )
-        if not credits_df_crew.empty:
-            # 轉換 movie_id 為整數以便匹配
-            credits_df_crew["id"] = pd.to_numeric(credits_df_crew["id"], errors="coerce")
-            # 解析 crew 欄位
-            credits_df_crew["crew"] = credits_df_crew["crew"].apply(
-                lambda x: parse_json_field(x) if pd.notnull(x) else []
-            )
-            # 從 crew 中提取導演信息
-            credits_df_crew["directors"] = credits_df_crew["crew"].apply(
-                lambda crew: [
-                    member["name"] for member in crew if isinstance(crew, list) and member.get("job") == "Director"
-                ]
-            )
-        if not credits_df_cast.empty:
-            # 轉換 movie_id 為整數以便匹配
-            credits_df_cast["id"] = pd.to_numeric(credits_df_cast["id"], errors="coerce")
-            # 解析 cast 欄位
-            credits_df_cast["cast"] = credits_df_cast["cast"].apply(
-                lambda x: parse_json_field(x) if pd.notnull(x) else []
-            )
-        # 建立優化查詢的緩存映射
-        # 1. 導演到電影的映射
-        directors_map = {}
-        for _, row in credits_df_crew.iterrows():
-            movie_id = row["id"]
-            directors = row["directors"]
-            if pd.isna(movie_id) or not isinstance(directors, list):
-                continue
-            movie = movies_df[movies_df["id"] == movie_id]
-            if movie.empty:
-                continue
-            movie_data = movie.iloc[0]
-            movie_info = {
-                "id": int(movie_id) if pd.notnull(movie_id) else None,
-                "title": movie_data["title"],
-                "release_date": movie_data["release_date"],
-                "genres": movie_data["genres"],
-                "vote_average": movie_data["vote_average"],
-                "revenue": movie_data["revenue"],
-            }
-            for director in directors:
-                if director not in directors_map:
-                    directors_map[director] = []
-                directors_map[director].append(movie_info)
-        # 2. 演員到電影的映射
-        actors_map = {}
-        for _, row in credits_df_cast.iterrows():
-            movie_id = row["id"]
-            cast = row["cast"]
-            if pd.isna(movie_id) or not isinstance(cast, list):
-                continue
-            movie = movies_df[movies_df["id"] == movie_id]
-            if movie.empty:
-                continue
-            movie_data = movie.iloc[0]
-            for actor in cast[:10]:  # 只取前10個演員
-                if not isinstance(actor, dict) or "name" not in actor:
-                    continue
-                actor_name = actor["name"]
-                character = actor.get("character", "Unknown")
-                movie_info = {
-                    "id": int(movie_id) if pd.notnull(movie_id) else None,
-                    "title": movie_data["title"],
-                    "release_date": movie_data["release_date"],
-                    "character": character,
-                    "popularity": movie_data.get("popularity", None),
-                }
-                if actor_name not in actors_map:
-                    actors_map[actor_name] = []
-                actors_map[actor_name].append(movie_info)
-        # 3. 類型到電影的映射
-        genres_map = {}
-        for _, movie in movies_df.iterrows():
-            genres = movie["genres"]
-            if not isinstance(genres, list):
-                continue
-            for genre in genres:
-                if genre not in genres_map:
-                    genres_map[genre] = []
-                genres_map[genre].append({
-                    "id": int(movie["id"]) if pd.notnull(movie["id"]) else None,
-                    "title": movie["title"],
-                    "release_date": movie["release_date"],
-                    "vote_average": movie["vote_average"],
-                    "genres": genres,
-                })
-        # 4. 所有導演列表
-        directors_list = sorted(list(directors_map.keys()))
-        # 更新緩存
-        cache["directors_map"] = directors_map
-        cache["actors_map"] = actors_map
-        cache["genres_map"] = genres_map
-        cache["directors_list"] = directors_list
-        cache["last_load_time"] = current_time
-        print("數據加載和緩存建立完成")
+            cursor.execute(query)
+            
+        results = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        
+        # 緩存結果（如果提供了緩存鍵）
+        if cache_key:
+            cache["query_cache"][cache_key] = results
+            
+        return results
     except Exception as e:
-        print(f"數據緩存建立錯誤: {e}")
+        print(f"執行查詢時出錯: {e}")
+        if conn:
+            conn.close()
+        raise e
+
+def check_database():
+    """檢查資料庫結構並顯示基本信息"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # 獲取資料表列表
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        tables = cursor.fetchall()
+        
+        print("資料庫表結構:")
+        for table in tables:
+            table_name = table['name']
+            print(f"- {table_name}")
+            
+            # 獲取表中的列信息
+            cursor.execute(f"PRAGMA table_info({table_name});")
+            columns = cursor.fetchall()
+            for col in columns:
+                print(f"  - {col['name']} ({col['type']})")
+                
+            # 獲取記錄數
+            cursor.execute(f"SELECT COUNT(*) as count FROM {table_name};")
+            count = cursor.fetchone()['count']
+            print(f"  - 記錄數: {count}")
+        
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"檢查資料庫時出錯: {e}")
+        if 'conn' in locals() and conn:
+            conn.close()
+        return False
 
 @app.route("/", methods=["GET"])
 def index():
@@ -422,11 +168,11 @@ def api_home():
     """提供 API 文檔和測試界面的入口頁面"""
     return render_template("api.html")
 
-@app.route("/api/movies", methods=["GET"])
+@app.route("/api/reviews", methods=["GET"])
 @swag_from({
-    "tags": ["電影列表"],
-    "summary": "獲取電影列表",
-    "description": "獲取電影列表，支持多種過濾條件",
+    "tags": ["評論列表"],
+    "summary": "獲取評論列表",
+    "description": "獲取Amazon Fine Food評論列表，支持多種過濾條件",
     "parameters": [
         {
             "name": "page",
@@ -443,301 +189,320 @@ def api_home():
             "description": "每頁結果數量"
         },
         {
-            "name": "year",
+            "name": "min_score",
             "in": "query",
             "type": "integer",
-            "description": "發行年份"
+            "description": "最低評分 (1-5)"
         },
         {
-            "name": "genre",
+            "name": "max_score",
             "in": "query",
-            "type": "string",
-            "description": "電影類型"
-        },
-        {
-            "name": "min_rating",
-            "in": "query",
-            "type": "number",
-            "format": "float",
-            "description": "最低評分"
-        },
-        {
-            "name": "min_revenue",
-            "in": "query",
-            "type": "number",
-            "format": "float",
-            "description": "最低票房"
+            "type": "integer",
+            "description": "最高評分 (1-5)"
         }
     ],
     "responses": {
         "200": {
-            "description": "成功獲取電影列表"
+            "description": "成功獲取評論列表"
         }
     }
 })
-def get_movies():
-    """獲取電影列表，支持多種過濾條件"""
-    load_data()
-
+def get_reviews():
+    """獲取評論列表，支持分頁和評分過濾"""
     # 獲取查詢參數
     page = request.args.get("page", 1, type=int)
     limit = request.args.get("limit", 20, type=int)
-    year = request.args.get("year", type=int)
-    genre = request.args.get("genre")
-    min_rating = request.args.get("min_rating", type=float)
-    min_revenue = request.args.get("min_revenue", type=float)
+    min_score = request.args.get("min_score", type=int)
+    max_score = request.args.get("max_score", type=int)
 
-    # 構建 SQL 查詢
-    sql_query = "SELECT id, title, release_date, genres, vote_average, revenue, runtime FROM movies_metadata WHERE 1=1"
-    if year:
-        sql_query += f" AND release_date LIKE '%{year}%'"
-    if min_revenue:
-        sql_query += f" AND CAST(revenue AS FLOAT) >= {min_revenue}"
-    if min_rating:
-        sql_query += f" AND CAST(vote_average AS FLOAT) >= {min_rating}"
-    # 添加排序和分頁
-    sql_query += " ORDER BY popularity DESC"
-    sql_query += f" LIMIT {limit} OFFSET {(page - 1) * limit}"
+    # 構建查詢和參數
+    query = "SELECT * FROM Reviews WHERE 1=1"
+    params = []
+    
+    if min_score:
+        query += " AND Score >= ?"
+        params.append(min_score)
+    
+    if max_score:
+        query += " AND Score <= ?"
+        params.append(max_score)
+    
+    # 添加分頁
+    offset = (page - 1) * limit
+    query += f" ORDER BY Time DESC LIMIT {limit} OFFSET {offset}"
+    
+    # 緩存鍵
+    cache_key = f"reviews:{page}:{limit}:{min_score}:{max_score}"
+    
     # 執行查詢
-    movies_df = get_kaggle_data(MOVIES_FILE, sql_query)
-    # 針對 genre 進行進一步過濾（這個需要在 Python 中處理，因為 genres 是 JSON 結構）
-    if genre and not movies_df.empty:
-        # 解析 genres 欄位
-        movies_df["genres"] = movies_df["genres"].apply(
-            lambda x: parse_json_field(x, "name") if pd.notnull(x) else []
-        )
-        # 過濾包含特定類型的電影
-        movies_df = movies_df[
-            movies_df["genres"].apply(
-                lambda x: genre in x if isinstance(x, list) else False
-            )
-        ]
-    # 格式化結果
-    movies_list = []
-    for _, movie in movies_df.iterrows():
-        movie_data = {
-            "id": int(movie["id"]) if pd.notnull(movie["id"]) else None,
-            "title": movie["title"],
-            "release_date": movie["release_date"],
-            "genres": movie["genres"] if "genres" in movie and isinstance(movie["genres"], list) else [],
-            "vote_average": movie["vote_average"],
-            "revenue": movie["revenue"],
-            "runtime": movie["runtime"],
-        }
-        movies_list.append(movie_data)
-
-    total = len(movies_list)  # 注意：這不是總記錄數，只是當前頁的記錄數
-
-    return jsonify(
-        {
+    try:
+        results = execute_query(query, tuple(params) if params else None, cache_key)
+        
+        # 獲取總記錄數（用於分頁）
+        count_query = "SELECT COUNT(*) as total FROM Reviews WHERE 1=1"
+        if min_score:
+            count_query += " AND Score >= ?"
+        if max_score:
+            count_query += " AND Score <= ?"
+        
+        count_results = execute_query(count_query, tuple(params) if params else None)
+        total = count_results[0]['total'] if count_results else 0
+        
+        return jsonify({
             "page": page,
+            "limit": limit,
             "total_results": total,
             "total_pages": (total + limit - 1) // limit if total > 0 else 1,
-            "results": movies_list,
-        }
-    )
+            "results": results
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-@app.route("/api/movies/<int:movie_id>", methods=["GET"])
+@app.route("/api/reviews/<string:review_id>", methods=["GET"])
 @swag_from({
-    "tags": ["電影列表"],
-    "summary": "獲取特定電影的詳細信息",
-    "description": "根據電影 ID 獲取詳細信息",
+    "tags": ["評論列表"],
+    "summary": "獲取評論詳情",
+    "description": "根據評論ID獲取詳細信息",
     "parameters": [
         {
-            "name": "movie_id",
+            "name": "review_id",
             "in": "path",
-            "type": "integer",
+            "type": "string",
             "required": True,
-            "description": "電影 ID"
+            "description": "評論ID"
         }
     ],
     "responses": {
         "200": {
-            "description": "成功獲取電影詳情"
+            "description": "成功獲取評論詳情"
         },
         "404": {
-            "description": "找不到該電影"
+            "description": "找不到該評論"
         }
     }
 })
-def get_movie_details(movie_id):
-    """獲取特定電影的詳細信息"""
-    # 直接用 SQL 查詢獲取電影詳情
-    sql_query = f"SELECT * FROM movies_metadata WHERE id = {movie_id}"
-    movie_df = get_kaggle_data(MOVIES_FILE, sql_query)
-    if movie_df.empty:
-        return jsonify({"error": "找不到該電影"}), 404
-    movie = movie_df.iloc[0]
-    # 解析 genres 欄位
-    genres = parse_json_field(movie["genres"], "name") if pd.notnull(movie["genres"]) else []
-    # 獲取演員和導演信息
-    cast_sql = f"SELECT cast, crew FROM credits WHERE id = {movie_id}"
-    cast_crew_df = get_kaggle_data(CREDITS_FILE, cast_sql)
-    cast = []
-    directors = []
-    if not cast_crew_df.empty:
-        cast_row = cast_crew_df.iloc[0]
-        # 解析 cast 資料
-        cast_data = parse_json_field(cast_row["cast"]) if pd.notnull(cast_row["cast"]) else []
-        if isinstance(cast_data, list):
-            cast = [
-                {
-                    "id": actor.get("id"),
-                    "name": actor.get("name"),
-                    "character": actor.get("character"),
-                }
-                for actor in cast_data[:10] if isinstance(actor, dict)
-            ]
-        # 解析 crew 資料並提取導演
-        crew_data = parse_json_field(cast_row["crew"]) if pd.notnull(cast_row["crew"]) else []
-        if isinstance(crew_data, list):
-            directors = [
-                member.get("name") for member in crew_data
-                if isinstance(member, dict) and member.get("job") == "Director"
-            ]
-    # 獲取評分數據
-    rating_sql = f"SELECT rating FROM ratings_small WHERE movieId = {movie_id}"
-    ratings_df = get_kaggle_data(RATINGS_FILE, rating_sql)
-    rating_info = None
-    if not ratings_df.empty:
-        rating_info = {
-            "average_rating": ratings_df["rating"].mean(),
-            "number_of_ratings": len(ratings_df),
+def get_review_details(review_id):
+    """獲取單條評論的詳細信息"""
+    try:
+        query = "SELECT * FROM Reviews WHERE Id = ?"
+        results = execute_query(query, (review_id,))
+        
+        if not results:
+            return jsonify({"error": "找不到該評論"}), 404
+        
+        review = results[0]
+        
+        # 獲取相關產品信息
+        product_query = """
+        SELECT ProductId, COUNT(*) as review_count, AVG(Score) as avg_score 
+        FROM Reviews 
+        WHERE ProductId = ? 
+        GROUP BY ProductId
+        """
+        product_info = execute_query(product_query, (review['ProductId'],))
+        
+        # 構建完整回應
+        response = {
+            **review,
+            "product_info": product_info[0] if product_info else None
         }
-    # 構建完整回應
-    movie_details = {
-        "id": int(movie["id"]) if pd.notnull(movie["id"]) else None,
-        "title": movie["title"],
-        "original_title": movie["original_title"] if "original_title" in movie else movie["title"],
-        "release_date": movie["release_date"],
-        "genres": genres,
-        "overview": movie["overview"],
-        "vote_average": movie["vote_average"],
-        "vote_count": movie["vote_count"] if "vote_count" in movie else None,
-        "revenue": movie["revenue"],
-        "budget": movie["budget"] if "budget" in movie else None,
-        "runtime": movie["runtime"],
-        "cast": cast,
-        "directors": directors,
-        "rating_info": rating_info,
-    }
-    return jsonify(movie_details)
+        
+        return jsonify(response)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-@app.route("/api/actor/<string:actor_name>", methods=["GET"])
+@app.route("/api/product/<string:product_id>", methods=["GET"])
 @swag_from({
-    "tags": ["演員和導演"],
-    "summary": "獲取特定演員參演的所有電影",
-    "description": "根據演員名稱獲取其參演的所有電影",
+    "tags": ["產品和用戶"],
+    "summary": "獲取產品評論",
+    "description": "獲取特定產品的所有評論",
     "parameters": [
         {
-            "name": "actor_name",
+            "name": "product_id",
             "in": "path",
             "type": "string",
             "required": True,
-            "description": "演員名稱"
+            "description": "產品ID"
+        },
+        {
+            "name": "page",
+            "in": "query",
+            "type": "integer",
+            "default": 1,
+            "description": "頁碼"
+        },
+        {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 20,
+            "description": "每頁結果數量"
         }
     ],
     "responses": {
         "200": {
-            "description": "成功獲取演員電影列表"
-        },
-        "500": {
-            "description": "演員數據不可用"
+            "description": "成功獲取產品評論"
         }
     }
 })
-def get_actor_movies(actor_name):
-    """獲取特定演員參演的所有電影"""
-    load_data()
-    if not cache["actors_map"]:
-        return jsonify({"error": "演員數據不可用"}), 500
-    # 查找演員的電影（不區分大小寫）
-    actor_name_lower = actor_name.lower()
-    # 嘗試精確匹配
-    exact_matches = [name for name in cache["actors_map"].keys()
-                     if name.lower() == actor_name_lower]
-    if exact_matches:
-        actor_movies = cache["actors_map"][exact_matches[0]]
-    else:
-        # 嘗試模糊匹配
-        potential_matches = [name for name in cache["actors_map"].keys()
-                            if actor_name_lower in name.lower()]
-        if not potential_matches:
-            return jsonify({"actor": actor_name, "movie_count": 0, "movies": []}), 200
-        actor_movies = cache["actors_map"][potential_matches[0]]
-    # 按受歡迎程度排序
-    actor_movies.sort(
-        key=lambda x: x.get("popularity", 0) if x.get("popularity") is not None else 0,
-        reverse=True,
-    )
-    return jsonify(
-        {"actor": actor_name, "movie_count": len(actor_movies), "movies": actor_movies}
-    )
+def get_product_reviews(product_id):
+    """獲取特定產品的所有評論"""
+    # 獲取查詢參數
+    page = request.args.get("page", 1, type=int)
+    limit = request.args.get("limit", 20, type=int)
+    offset = (page - 1) * limit
+    
+    try:
+        # 獲取產品評論
+        query = """
+        SELECT * FROM Reviews 
+        WHERE ProductId = ? 
+        ORDER BY Time DESC 
+        LIMIT ? OFFSET ?
+        """
+        reviews = execute_query(query, (product_id, limit, offset))
+        
+        # 獲取產品評論統計
+        stats_query = """
+        SELECT 
+            ProductId, 
+            COUNT(*) as review_count, 
+            AVG(Score) as avg_score,
+            SUM(CASE WHEN Score = 5 THEN 1 ELSE 0 END) as five_star,
+            SUM(CASE WHEN Score = 4 THEN 1 ELSE 0 END) as four_star,
+            SUM(CASE WHEN Score = 3 THEN 1 ELSE 0 END) as three_star,
+            SUM(CASE WHEN Score = 2 THEN 1 ELSE 0 END) as two_star,
+            SUM(CASE WHEN Score = 1 THEN 1 ELSE 0 END) as one_star
+        FROM Reviews 
+        WHERE ProductId = ?
+        GROUP BY ProductId
+        """
+        stats = execute_query(stats_query, (product_id,))
+        
+        # 獲取總記錄數（用於分頁）
+        count_query = "SELECT COUNT(*) as total FROM Reviews WHERE ProductId = ?"
+        count_results = execute_query(count_query, (product_id,))
+        total = count_results[0]['total'] if count_results else 0
+        
+        return jsonify({
+            "product_id": product_id,
+            "statistics": stats[0] if stats else None,
+            "page": page,
+            "limit": limit,
+            "total_reviews": total,
+            "total_pages": (total + limit - 1) // limit if total > 0 else 1,
+            "reviews": reviews
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-@app.route("/api/director/<string:director_name>", methods=["GET"])
+@app.route("/api/user/<string:user_id>", methods=["GET"])
 @swag_from({
-    "tags": ["演員和導演"],
-    "summary": "獲取特定導演執導的所有電影",
-    "description": "根據導演名稱獲取其執導的所有電影",
+    "tags": ["產品和用戶"],
+    "summary": "獲取用戶評論",
+    "description": "獲取特定用戶的所有評論",
     "parameters": [
         {
-            "name": "director_name",
+            "name": "user_id",
             "in": "path",
             "type": "string",
             "required": True,
-            "description": "導演名稱"
+            "description": "用戶ID"
+        },
+        {
+            "name": "page",
+            "in": "query",
+            "type": "integer",
+            "default": 1,
+            "description": "頁碼"
+        },
+        {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 20,
+            "description": "每頁結果數量"
         }
     ],
     "responses": {
         "200": {
-            "description": "成功獲取導演電影列表"
-        },
-        "500": {
-            "description": "導演數據不可用"
+            "description": "成功獲取用戶評論"
         }
     }
 })
-def get_director_movies(director_name):
-    """獲取特定導演執導的所有電影"""
-    load_data()
-    if not cache["directors_map"]:
-        return jsonify({"error": "導演數據不可用"}), 500
-    # 查找導演的電影（不區分大小寫）
-    director_name_lower = director_name.lower()
-    # 嘗試精確匹配
-    exact_matches = [name for name in cache["directors_map"].keys()
-                     if name.lower() == director_name_lower]
-    if exact_matches:
-        director_movies = cache["directors_map"][exact_matches[0]]
-    else:
-        # 嘗試模糊匹配
-        potential_matches = [name for name in cache["directors_map"].keys()
-                            if director_name_lower in name.lower()]
-        if not potential_matches:
-            return jsonify({"director": director_name, "movie_count": 0, "movies": []}), 200
-        director_movies = cache["directors_map"][potential_matches[0]]
-    # 按發行日期排序
-    director_movies.sort(key=lambda x: x.get("release_date", ""), reverse=True)
-    return jsonify(
-        {
-            "director": director_name,
-            "movie_count": len(director_movies),
-            "movies": director_movies,
-        }
-    )
+def get_user_reviews(user_id):
+    """獲取特定用戶的所有評論"""
+    # 獲取查詢參數
+    page = request.args.get("page", 1, type=int)
+    limit = request.args.get("limit", 20, type=int)
+    offset = (page - 1) * limit
+    
+    try:
+        # 獲取用戶評論
+        query = """
+        SELECT * FROM Reviews 
+        WHERE UserId = ? 
+        ORDER BY Time DESC 
+        LIMIT ? OFFSET ?
+        """
+        reviews = execute_query(query, (user_id, limit, offset))
+        
+        # 獲取用戶評論統計
+        stats_query = """
+        SELECT 
+            UserId, 
+            ProfileName,
+            COUNT(*) as review_count, 
+            AVG(Score) as avg_score
+        FROM Reviews 
+        WHERE UserId = ?
+        GROUP BY UserId, ProfileName
+        """
+        stats = execute_query(stats_query, (user_id,))
+        
+        # 獲取總記錄數（用於分頁）
+        count_query = "SELECT COUNT(*) as total FROM Reviews WHERE UserId = ?"
+        count_results = execute_query(count_query, (user_id,))
+        total = count_results[0]['total'] if count_results else 0
+        
+        return jsonify({
+            "user_id": user_id,
+            "user_profile": stats[0] if stats else None,
+            "page": page,
+            "limit": limit,
+            "total_reviews": total,
+            "total_pages": (total + limit - 1) // limit if total > 0 else 1,
+            "reviews": reviews
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/api/search", methods=["GET"])
 @swag_from({
     "tags": ["搜索"],
-    "summary": "搜索電影",
-    "description": "使用關鍵字搜索電影",
+    "summary": "搜索評論",
+    "description": "使用關鍵字搜索評論",
     "parameters": [
         {
             "name": "q",
             "in": "query",
             "type": "string",
             "required": True,
-            "description": "搜索查詢"
+            "description": "搜索關鍵詞"
+        },
+        {
+            "name": "page",
+            "in": "query",
+            "type": "integer",
+            "default": 1,
+            "description": "頁碼"
+        },
+        {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 20,
+            "description": "每頁結果數量"
         }
     ],
     "responses": {
@@ -749,45 +514,52 @@ def get_director_movies(director_name):
         }
     }
 })
-def search_movies():
-    """搜索電影（基本文本搜索）"""
-    query = request.args.get("q", "")
-    if not query:
-        return jsonify({"error": "必須提供搜索查詢"}), 400
-
-    # 使用SQL查詢進行搜索
-    sql_query = f"""
-    SELECT id, title, release_date, genres, overview
-    FROM movies_metadata
-    WHERE title LIKE '%{query}%' OR overview LIKE '%{query}%'
-    LIMIT 20
+def search_reviews():
+    """使用關鍵字搜索評論"""
+    query_text = request.args.get("q", "")
+    if not query_text:
+        return jsonify({"error": "必須提供搜索關鍵詞"}), 400
+    
+    # 獲取查詢參數
+    page = request.args.get("page", 1, type=int)
+    limit = request.args.get("limit", 20, type=int)
+    offset = (page - 1) * limit
+    
+    # 構建搜索查詢
+    search_query = """
+    SELECT * FROM Reviews 
+    WHERE Text LIKE ? OR Summary LIKE ? 
+    ORDER BY Time DESC 
+    LIMIT ? OFFSET ?
     """
-    matched_movies = get_kaggle_data(MOVIES_FILE, sql_query)
-    # 解析genres列
-    matched_movies["genres"] = matched_movies["genres"].apply(
-        lambda x: parse_json_field(x, "name") if pd.notnull(x) else []
-    )
-
-    # 格式化結果
-    results = []
-    for _, movie in matched_movies.iterrows():
-        results.append(
-            {
-                "id": int(movie["id"]) if pd.notnull(movie["id"]) else None,
-                "title": movie["title"],
-                "release_date": movie["release_date"],
-                "overview": movie["overview"],
-                "genres": movie["genres"],
-            }
-        )
-
-    return jsonify({"query": query, "results_count": len(results), "results": results})
+    search_params = (f"%{query_text}%", f"%{query_text}%", limit, offset)
+    
+    try:
+        # 執行查詢
+        results = execute_query(search_query, search_params)
+        
+        # 獲取總記錄數（用於分頁）
+        count_query = "SELECT COUNT(*) as total FROM Reviews WHERE Text LIKE ? OR Summary LIKE ?"
+        count_params = (f"%{query_text}%", f"%{query_text}%")
+        count_results = execute_query(count_query, count_params)
+        total = count_results[0]['total'] if count_results else 0
+        
+        return jsonify({
+            "query": query_text,
+            "page": page,
+            "limit": limit,
+            "total_results": total,
+            "total_pages": (total + limit - 1) // limit if total > 0 else 1,
+            "results": results
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/api/query", methods=["POST"])
 @swag_from({
     "tags": ["搜索"],
-    "summary": "自然語言查詢電影",
-    "description": "使用自然語言查詢電影，由 Gemini API 解析",
+    "summary": "自然語言查詢評論",
+    "description": "使用自然語言查詢評論，由 Gemini API 解析",
     "parameters": [
         {
             "name": "body",
@@ -817,10 +589,8 @@ def search_movies():
         }
     }
 })
-def query_movies():
-    """使用自然語言查詢電影（使用 Gemini API）"""
-    load_data()
-
+def query_reviews():
+    """使用自然語言查詢評論（使用 Gemini API）"""
     data = request.get_json()
     if not data or "query" not in data:
         return jsonify({"error": "必須提供自然語言查詢"}), 400
@@ -829,16 +599,16 @@ def query_movies():
 
     # 使用 Gemini API 解析查詢
     prompt = f"""
-    根據以下自然語言查詢，提取有關電影的搜索關鍵信息。
+    根據以下自然語言查詢，提取關於Amazon食品評論的搜索關鍵信息。
     請以JSON格式回傳以下欄位（如果有相關信息）：
-    - actor: 演員名稱（如有中文名，請同時提供英文名）
-    - director: 導演名稱（如有中文名，請同時提供英文名）
-    - year: 發行年份
-    - genre: 電影類型
-    - min_rating: 最低評分
-    - keyword: 標題或概述中的關鍵字
+    - keyword: 評論中的關鍵詞
+    - min_score: 最低評分 (1-5)
+    - max_score: 最高評分 (1-5)
+    - product: 特定產品名稱或ID
+    - user: 特定用戶名稱或ID
+    - sentiment: 情感傾向 (positive, negative, neutral)
 
-    例如：如果查詢是"找克里斯多夫·諾蘭執導的電影"，應返回：{{"director": "Christopher Nolan"}}
+    例如：如果查詢是"找出評分是5星的巧克力評論"，應返回：{{"keyword": "巧克力", "min_score": 5, "max_score": 5}}
 
     查詢: {user_query}
     """
@@ -851,6 +621,7 @@ def query_movies():
             config=types.GenerateContentConfig(response_mime_type="application/json"),
         )
         print(f"Gemini API 原始回應: {gemini_response.text}")
+        
         # 解析 Gemini 回應
         try:
             structured_query = json.loads(gemini_response.text)
@@ -859,99 +630,58 @@ def query_movies():
             print(f"JSON解析錯誤: {json_err}. 原始回應: {gemini_response.text}")
             return jsonify({"error": f"無法解析模型回應為JSON: {str(json_err)}"}), 500
 
-        # 根據結構化查詢搜索電影
-        results = []
-
-        # 如果查詢指定了演員
-        if "actor" in structured_query and structured_query["actor"]:
-            actor_response = get_actor_movies(structured_query["actor"])
-            # 修復：檢查返回值類型並正確處理
-            if isinstance(actor_response, tuple):
-                actor_data = json.loads(actor_response[0].data)
-            else:
-                actor_data = json.loads(actor_response.data)
-            if "movies" in actor_data:
-                # 標記結果來源
-                for movie in actor_data["movies"]:
-                    movie["result_type"] = "actor_search"
-                results.extend(actor_data["movies"])
-
-        # 如果查詢指定了導演
-        if "director" in structured_query and structured_query["director"]:
-            print(f"嘗試搜索導演: {structured_query['director']}")
-            director_response = get_director_movies(structured_query["director"])
-            # 修復：檢查返回值類型並正確處理
-            if isinstance(director_response, tuple):
-                director_data = json.loads(director_response[0].data)
-            else:
-                director_data = json.loads(director_response.data)
-            print(f"導演搜索結果: {director_data}")
-            if "movies" in director_data:
-                # 標記結果來源
-                for movie in director_data["movies"]:
-                    movie["result_type"] = "director_search"
-                results.extend(director_data["movies"])
-
-        # 如果查詢包含其他條件，搜索電影
-        if (
-            ("year" in structured_query and structured_query["year"])
-            or ("genre" in structured_query and structured_query["genre"])
-            or ("min_rating" in structured_query and structured_query["min_rating"])
-            or ("keyword" in structured_query and structured_query["keyword"])
-        ):
-            # 構建 API 參數
-            params = {}
-            if "year" in structured_query and structured_query["year"]:
-                params["year"] = structured_query["year"]
-            if "genre" in structured_query and structured_query["genre"]:
-                params["genre"] = structured_query["genre"]
-            if "min_rating" in structured_query and structured_query["min_rating"]:
-                params["min_rating"] = structured_query["min_rating"]
-
-            # 如果有關鍵字，使用搜索 API
-            if "keyword" in structured_query and structured_query["keyword"]:
-                search_response = search_movies()
-                # 修復：檢查返回值類型並正確處理
-                if isinstance(search_response, tuple):
-                    search_data = json.loads(search_response[0].data)
-                else:
-                    search_data = json.loads(search_response.data)
-                if "results" in search_data:
-                    # 標記結果來源
-                    for movie in search_data["results"]:
-                        movie["result_type"] = "keyword_search"
-                    results.extend(search_data["results"])
-            else:
-                # 使用電影 API 進行過濾
-                movies_response = get_movies()
-                # 修復：檢查返回值類型並正確處理
-                if isinstance(movies_response, tuple):
-                    movies_data = json.loads(movies_response[0].data)
-                else:
-                    movies_data = json.loads(movies_response.data)
-                if "results" in movies_data:
-                    # 標記結果來源
-                    for movie in movies_data["results"]:
-                        movie["result_type"] = "filter_search"
-                    results.extend(movies_data["results"])
-
-        # 去除重複結果
-        unique_movies = {}
-        for movie in results:
-            if "id" in movie and movie["id"] not in unique_movies:
-                unique_movies[movie["id"]] = movie
-
-        unique_results = list(unique_movies.values())
-
-        return jsonify(
-            {
-                "query": user_query,
-                "interpreted_as": structured_query,
-                "results_count": len(unique_results),
-                "results": unique_results,
-            }
-        )
-
+        # 根據結構化查詢搜索評論
+        sql_query = "SELECT * FROM Reviews WHERE 1=1"
+        params = []
+        
+        # 處理評分範圍
+        if "min_score" in structured_query and structured_query["min_score"]:
+            sql_query += " AND Score >= ?"
+            params.append(structured_query["min_score"])
+        
+        if "max_score" in structured_query and structured_query["max_score"]:
+            sql_query += " AND Score <= ?"
+            params.append(structured_query["max_score"])
+        
+        # 處理關鍵詞
+        if "keyword" in structured_query and structured_query["keyword"]:
+            keyword = structured_query["keyword"]
+            sql_query += " AND (Text LIKE ? OR Summary LIKE ?)"
+            params.extend([f"%{keyword}%", f"%{keyword}%"])
+        
+        # 處理特定產品
+        if "product" in structured_query and structured_query["product"]:
+            product = structured_query["product"]
+            # 嘗試直接匹配產品ID或在文本中搜索
+            sql_query += " AND (ProductId = ? OR Text LIKE ? OR Summary LIKE ?)"
+            params.extend([product, f"%{product}%", f"%{product}%"])
+        
+        # 處理特定用戶
+        if "user" in structured_query and structured_query["user"]:
+            user = structured_query["user"]
+            # 嘗試匹配用戶ID或名稱
+            sql_query += " AND (UserId = ? OR ProfileName LIKE ?)"
+            params.extend([user, f"%{user}%"])
+            
+        # 排序和限制結果
+        sql_query += " ORDER BY Time DESC LIMIT 50"
+        
+        # 執行查詢
+        results = execute_query(sql_query, tuple(params) if params else None)
+        
+        # 如果有情感分析要求，可以使用Gemini進行分析
+        if "sentiment" in structured_query and structured_query["sentiment"] and results:
+            sentiment = structured_query["sentiment"].lower()
+            # 這裡可以實現更複雜的情感過濾邏輯
+            # 目前只是簡單示例
+            
+        return jsonify({
+            "query": user_query,
+            "interpreted_as": structured_query,
+            "results_count": len(results),
+            "results": results
+        })
+        
     except Exception as e:
         print(f"查詢處理錯誤: {e}")
         return jsonify({"error": str(e)}), 500
@@ -968,74 +698,37 @@ def query_movies():
     }
 })
 def debug():
-    """調試端點，用於檢視數據加載狀態"""
-    load_data()
-
-    return jsonify(
-        {
-            "data_loaded": cache["last_load_time"] > 0,
+    """調試端點，用於檢視數據庫狀態"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # 獲取資料表列表
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        tables = [dict(row) for row in cursor.fetchall()]
+        
+        # 獲取各表記錄數
+        table_counts = {}
+        for table in tables:
+            table_name = table['name']
+            cursor.execute(f"SELECT COUNT(*) as count FROM {table_name};")
+            count = cursor.fetchone()['count']
+            table_counts[table_name] = count
+        
+        conn.close()
+        
+        return jsonify({
+            "database_path": DB_PATH,
+            "database_exists": os.path.exists(DB_PATH),
+            "tables": tables,
+            "record_counts": table_counts,
             "cache_status": {
-                "directors_map": bool(cache["directors_map"]),
-                "actors_map": bool(cache["actors_map"]),
-                "genres_map": bool(cache["genres_map"]),
-                "directors_list": bool(cache["directors_list"]),
-                "last_updated": cache["last_load_time"],
-            },
-            "kaggle_dataset": KAGGLE_DATASET,
-            "files": {
-                "movies": MOVIES_FILE,
-                "credits": CREDITS_FILE,
-                "ratings": RATINGS_FILE,
-            },
-        }
-    )
-
-@app.route("/api/debug/directors", methods=["GET"])
-@swag_from({
-    "tags": ["系統"],
-    "summary": "獲取所有導演列表",
-    "description": "用於調試：列出數據集中的所有導演名稱",
-    "parameters": [
-        {
-            "name": "limit",
-            "in": "query",
-            "type": "integer",
-            "default": 100,
-            "description": "要返回的導演數量限制"
-        },
-        {
-            "name": "search",
-            "in": "query",
-            "type": "string",
-            "description": "按名稱搜索導演（不區分大小寫）"
-        }
-    ],
-    "responses": {
-        "200": {
-            "description": "成功獲取導演列表"
-        }
-    }
-})
-def list_directors():
-    """調試端點，列出所有導演"""
-    load_data()
-    if not cache["directors_list"]:
-        return jsonify({"error": "導演數據不可用"}), 500
-    directors_list = cache["directors_list"]
-    # 應用搜索過濾
-    search_term = request.args.get("search", "").lower()
-    if search_term:
-        directors_list = [d for d in directors_list if search_term in d.lower()]
-    # 應用限制
-    limit = request.args.get("limit", 100, type=int)
-    directors_list = directors_list[:limit]
-    # 返回結果
-    return jsonify({
-        "total_directors": len(cache["directors_list"]),
-        "returned_count": len(directors_list),
-        "search_term": search_term if search_term else None,
-        "directors": directors_list
-    })
+                "query_cache_size": len(cache["query_cache"]),
+                "last_load_time": cache["last_load_time"]
+            }
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/favicon.ico')
 def favicon():
@@ -1048,17 +741,16 @@ if __name__ == "__main__":
         print("錯誤：未設置 GEMINI_API_KEY 環境變數")
         exit(1)
 
-    print("初始化電影推薦系統...")
-    check_or_download_datasets()
-    print("檢查或創建數據目錄...")
-    os.makedirs(DATA_DIR, exist_ok=True)
-    print("數據初始化完成")
-
+    print("初始化Amazon Fine Food Reviews系統...")
+    
+    if not os.path.exists(DB_PATH):
+        print(f"警告：找不到資料庫文件: {DB_PATH}")
+        print("請先運行 download_data.sh 下載數據")
+    else:
+        print(f"資料庫檔案已存在: {DB_PATH}")
+        check_database()
+    
     # 使用環境變數來控制 debug 模式，預設為 False（安全模式）
     debug_mode = os.getenv("FLASK_DEBUG", "False").lower() == "true"
-
-    # 開始加載數據
-    print("開始加載數據...")
-    load_data()
-
-    app.run(debug=debug_mode)
+    
+    app.run(debug=debug_mode) 

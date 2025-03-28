@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>電影資料查詢系統</title>
+    <title>Amazon食品評論系統</title>
     <link
       rel="stylesheet"
       href="{{ url_for('static', filename='css/style.css') }}"
@@ -12,8 +12,8 @@
   <body>
     <div class="chat-container">
       <div class="chat-header">
-        <h1>電影資料查詢系統</h1>
-        <p>使用自然語言詢問有關電影的問題</p>
+        <h1>Amazon食品評論查詢系統</h1>
+        <p>使用自然語言詢問有關食品評論的問題</p>
         <div class="api-link">
           <a href="/api" title="API 文檔">API 文檔</a>
         </div>
@@ -22,8 +22,7 @@
       <div class="chat-messages" id="chat-messages">
         <div class="system-message">
           <p>
-            歡迎使用電影資料查詢系統！請輸入您的問題，例如：「找出克里斯托弗·諾蘭導演的所有電影」或「推薦評分超過
-            8 分的動作片」
+            歡迎使用Amazon食品評論查詢系統！請輸入您的問題，例如：「找出評分5星的巧克力評論」或「查詢含有delicious關鍵詞的食品評論」
           </p>
         </div>
       </div>
