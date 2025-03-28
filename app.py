@@ -7,24 +7,24 @@ from pathlib import Path
 import pandas as pd
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request, send_from_directory
-from google import genai  # 新版 SDK 匯入方式
-from google.genai import types  # 用於傳入 GenerateContentConfig
+from google import genai  # Import method for new SDK
+from google.genai import types  # For passing GenerateContentConfig
 from flasgger import Swagger, swag_from
 
-# 載入環境變數
+# Load environment variables
 load_dotenv()
 
 app = Flask(__name__)
 
-# 設定 Swagger
+# Configure Swagger
 swagger_config = {
     "headers": [],
     "specs": [
         {
             "endpoint": "apispec",
             "route": "/apispec.json",
-            "rule_filter": lambda rule: True,  # 所有端點
-            "model_filter": lambda tag: True,  # 所有模型
+            "rule_filter": lambda rule: True,  # All endpoints
+            "model_filter": lambda tag: True,  # All models
         }
     ],
     "static_url_path": "/flasgger_static",
@@ -35,70 +35,70 @@ swagger_config = {
 swagger_template = {
     "info": {
         "title": "Amazon Fine Food Reviews API",
-        "description": "使用Amazon Fine Food Reviews數據實現的RESTful API，支持各種食品評論查詢功能",
+        "description": "RESTful API implemented using Amazon Fine Food Reviews data, supporting various food review query functions",
         "version": "1.0.0",
         "contact": {
-            "name": "API 支持",
+            "name": "API Support",
             "email": "support@example.com"
         }
     },
     "tags": [
         {
-            "name": "評論列表",
-            "description": "獲取評論列表和詳細信息"
+            "name": "Review List",
+            "description": "Get review lists and detailed information"
         },
         {
-            "name": "產品和用戶",
-            "description": "獲取特定產品或用戶的評論"
+            "name": "Products and Users",
+            "description": "Get reviews for specific products or users"
         },
         {
-            "name": "搜索",
-            "description": "搜索評論和自然語言查詢"
+            "name": "Search",
+            "description": "Search reviews and natural language queries"
         },
         {
-            "name": "系統",
-            "description": "調試和系統信息"
+            "name": "System",
+            "description": "Debug and system information"
         }
     ]
 }
 
 swagger = Swagger(app, config=swagger_config, template=swagger_template)
 
-# 設定 Gemini API 憑證
+# Set Gemini API credentials
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-# 建立 Google GenAI 的 API 客戶端
+# Create Google GenAI API client
 client = genai.Client(api_key=GEMINI_API_KEY)
 MODEL_NAME = "gemini-2.0-flash"
 
-# 設定資料庫路徑
+# Set database path
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 DB_PATH = os.path.join(DATA_DIR, "database.sqlite")
 
-# 確保資料目錄存在
+# Ensure data directory exists
 os.makedirs(DATA_DIR, exist_ok=True)
 
-# 查詢結果緩存
+# Query result cache
 cache = {
-    "query_cache": {},  # 查詢結果緩存
-    "last_load_time": 0  # 上次加載數據的時間戳
+    "query_cache": {},  # Query result cache
+    "last_load_time": 0  # Timestamp of last data load
 }
 
-# 連接到 SQLite 資料庫
+# Connect to SQLite database
 def get_db_connection():
-    """創建並返回一個SQLite資料庫連接"""
+    """Create and return a SQLite database connection"""
     if not os.path.exists(DB_PATH):
-        raise FileNotFoundError(f"找不到資料庫文件: {DB_PATH}。請先運行download_data.sh下載數據。")
+        raise FileNotFoundError(f"Database file not found: {DB_PATH}. Please run download_data.sh to download the data first.")
     
     conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row  # 讓結果以字典形式返回
+    conn.row_factory = sqlite3.Row  # Return results as dictionaries
     return conn
 
 def execute_query(query, params=None, cache_key=None):
-    """執行SQLite查詢，支持緩存結果"""
-    # 如果提供了緩存鍵且查詢結果已緩存，則直接返回緩存結果
+    """Execute SQLite query, support caching results"""
+    # If cache key is provided and query result is cached, return cached result
     if cache_key and cache_key in cache["query_cache"]:
-        print(f"使用緩存結果: {cache_key}")
+        print(f"Using cached result: {cache_key}")
         return cache["query_cache"][cache_key]
     
     try:
@@ -113,109 +113,109 @@ def execute_query(query, params=None, cache_key=None):
         results = [dict(row) for row in cursor.fetchall()]
         conn.close()
         
-        # 緩存結果（如果提供了緩存鍵）
+        # Cache result (if cache key is provided)
         if cache_key:
             cache["query_cache"][cache_key] = results
             
         return results
     except Exception as e:
-        print(f"執行查詢時出錯: {e}")
+        print(f"Error executing query: {e}")
         if conn:
             conn.close()
         raise e
 
 def check_database():
-    """檢查資料庫結構並顯示基本信息"""
+    """Check database structure and display basic information"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # 獲取資料表列表
+        # Get list of tables
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
         tables = cursor.fetchall()
         
-        print("資料庫表結構:")
+        print("Database table structure:")
         for table in tables:
             table_name = table['name']
             print(f"- {table_name}")
             
-            # 獲取表中的列信息
+            # Get column information for the table
             cursor.execute(f"PRAGMA table_info({table_name});")
             columns = cursor.fetchall()
             for col in columns:
                 print(f"  - {col['name']} ({col['type']})")
                 
-            # 獲取記錄數
+            # Get record count
             cursor.execute(f"SELECT COUNT(*) as count FROM {table_name};")
             count = cursor.fetchone()['count']
-            print(f"  - 記錄數: {count}")
+            print(f"  - Record count: {count}")
         
         conn.close()
         return True
     except Exception as e:
-        print(f"檢查資料庫時出錯: {e}")
+        print(f"Error checking database: {e}")
         if 'conn' in locals() and conn:
             conn.close()
         return False
 
 @app.route("/", methods=["GET"])
 def index():
-    """提供聊天界面的 HTML 頁面"""
+    """Provide HTML page for chat interface"""
     return render_template("index.html")
 
 @app.route("/api", methods=["GET"])
 def api_home():
-    """提供 API 文檔和測試界面的入口頁面"""
+    """Provide entry page for API documentation and testing interface"""
     return render_template("api.html")
 
 @app.route("/api/reviews", methods=["GET"])
 @swag_from({
-    "tags": ["評論列表"],
-    "summary": "獲取評論列表",
-    "description": "獲取Amazon Fine Food評論列表，支持多種過濾條件",
+    "tags": ["Review List"],
+    "summary": "Get review list",
+    "description": "Get Amazon Fine Food review list, supporting various filters",
     "parameters": [
         {
             "name": "page",
             "in": "query",
             "type": "integer",
             "default": 1,
-            "description": "頁碼"
+            "description": "Page number"
         },
         {
             "name": "limit",
             "in": "query",
             "type": "integer",
             "default": 20,
-            "description": "每頁結果數量"
+            "description": "Number of results per page"
         },
         {
             "name": "min_score",
             "in": "query",
             "type": "integer",
-            "description": "最低評分 (1-5)"
+            "description": "Minimum rating (1-5)"
         },
         {
             "name": "max_score",
             "in": "query",
             "type": "integer",
-            "description": "最高評分 (1-5)"
+            "description": "Maximum rating (1-5)"
         }
     ],
     "responses": {
         "200": {
-            "description": "成功獲取評論列表"
+            "description": "Successfully retrieved review list"
         }
     }
 })
 def get_reviews():
-    """獲取評論列表，支持分頁和評分過濾"""
-    # 獲取查詢參數
+    """Get review list, supports pagination and rating filters"""
+    # Get query parameters
     page = request.args.get("page", 1, type=int)
     limit = request.args.get("limit", 20, type=int)
     min_score = request.args.get("min_score", type=int)
     max_score = request.args.get("max_score", type=int)
 
-    # 構建查詢和參數
+    # Build query and parameters
     query = "SELECT * FROM Reviews WHERE 1=1"
     params = []
     
@@ -227,18 +227,18 @@ def get_reviews():
         query += " AND Score <= ?"
         params.append(max_score)
     
-    # 添加分頁
+    # Add pagination
     offset = (page - 1) * limit
     query += f" ORDER BY Time DESC LIMIT {limit} OFFSET {offset}"
     
-    # 緩存鍵
+    # Cache key
     cache_key = f"reviews:{page}:{limit}:{min_score}:{max_score}"
     
-    # 執行查詢
+    # Execute query
     try:
         results = execute_query(query, tuple(params) if params else None, cache_key)
         
-        # 獲取總記錄數（用於分頁）
+        # Get total record count (for pagination)
         count_query = "SELECT COUNT(*) as total FROM Reviews WHERE 1=1"
         if min_score:
             count_query += " AND Score >= ?"
@@ -260,39 +260,39 @@ def get_reviews():
 
 @app.route("/api/reviews/<string:review_id>", methods=["GET"])
 @swag_from({
-    "tags": ["評論列表"],
-    "summary": "獲取評論詳情",
-    "description": "根據評論ID獲取詳細信息",
+    "tags": ["Review List"],
+    "summary": "Get review details",
+    "description": "Get detailed information by review ID",
     "parameters": [
         {
             "name": "review_id",
             "in": "path",
             "type": "string",
             "required": True,
-            "description": "評論ID"
+            "description": "Review ID"
         }
     ],
     "responses": {
         "200": {
-            "description": "成功獲取評論詳情"
+            "description": "Successfully retrieved review details"
         },
         "404": {
-            "description": "找不到該評論"
+            "description": "Review not found"
         }
     }
 })
 def get_review_details(review_id):
-    """獲取單條評論的詳細信息"""
+    """Get detailed information for a single review"""
     try:
         query = "SELECT * FROM Reviews WHERE Id = ?"
         results = execute_query(query, (review_id,))
         
         if not results:
-            return jsonify({"error": "找不到該評論"}), 404
+            return jsonify({"error": "Review not found"}), 404
         
         review = results[0]
         
-        # 獲取相關產品信息
+        # Get related product information
         product_query = """
         SELECT ProductId, COUNT(*) as review_count, AVG(Score) as avg_score 
         FROM Reviews 
@@ -301,7 +301,7 @@ def get_review_details(review_id):
         """
         product_info = execute_query(product_query, (review['ProductId'],))
         
-        # 構建完整回應
+        # Build complete response
         response = {
             **review,
             "product_info": product_info[0] if product_info else None
@@ -313,47 +313,47 @@ def get_review_details(review_id):
 
 @app.route("/api/product/<string:product_id>", methods=["GET"])
 @swag_from({
-    "tags": ["產品和用戶"],
-    "summary": "獲取產品評論",
-    "description": "獲取特定產品的所有評論",
+    "tags": ["Products and Users"],
+    "summary": "Get product reviews",
+    "description": "Get all reviews for a specific product",
     "parameters": [
         {
             "name": "product_id",
             "in": "path",
             "type": "string",
             "required": True,
-            "description": "產品ID"
+            "description": "Product ID"
         },
         {
             "name": "page",
             "in": "query",
             "type": "integer",
             "default": 1,
-            "description": "頁碼"
+            "description": "Page number"
         },
         {
             "name": "limit",
             "in": "query",
             "type": "integer",
             "default": 20,
-            "description": "每頁結果數量"
+            "description": "Number of results per page"
         }
     ],
     "responses": {
         "200": {
-            "description": "成功獲取產品評論"
+            "description": "Successfully retrieved product reviews"
         }
     }
 })
 def get_product_reviews(product_id):
-    """獲取特定產品的所有評論"""
-    # 獲取查詢參數
+    """Get all reviews for a specific product"""
+    # Get query parameters
     page = request.args.get("page", 1, type=int)
     limit = request.args.get("limit", 20, type=int)
     offset = (page - 1) * limit
     
     try:
-        # 獲取產品評論
+        # Get product reviews
         query = """
         SELECT * FROM Reviews 
         WHERE ProductId = ? 
@@ -362,7 +362,7 @@ def get_product_reviews(product_id):
         """
         reviews = execute_query(query, (product_id, limit, offset))
         
-        # 獲取產品評論統計
+        # Get product review statistics
         stats_query = """
         SELECT 
             ProductId, 
@@ -379,7 +379,7 @@ def get_product_reviews(product_id):
         """
         stats = execute_query(stats_query, (product_id,))
         
-        # 獲取總記錄數（用於分頁）
+        # Get total record count (for pagination)
         count_query = "SELECT COUNT(*) as total FROM Reviews WHERE ProductId = ?"
         count_results = execute_query(count_query, (product_id,))
         total = count_results[0]['total'] if count_results else 0
@@ -398,47 +398,47 @@ def get_product_reviews(product_id):
 
 @app.route("/api/user/<string:user_id>", methods=["GET"])
 @swag_from({
-    "tags": ["產品和用戶"],
-    "summary": "獲取用戶評論",
-    "description": "獲取特定用戶的所有評論",
+    "tags": ["Products and Users"],
+    "summary": "Get user reviews",
+    "description": "Get all reviews by a specific user",
     "parameters": [
         {
             "name": "user_id",
             "in": "path",
             "type": "string",
             "required": True,
-            "description": "用戶ID"
+            "description": "User ID"
         },
         {
             "name": "page",
             "in": "query",
             "type": "integer",
             "default": 1,
-            "description": "頁碼"
+            "description": "Page number"
         },
         {
             "name": "limit",
             "in": "query",
             "type": "integer",
             "default": 20,
-            "description": "每頁結果數量"
+            "description": "Number of results per page"
         }
     ],
     "responses": {
         "200": {
-            "description": "成功獲取用戶評論"
+            "description": "Successfully retrieved user reviews"
         }
     }
 })
 def get_user_reviews(user_id):
-    """獲取特定用戶的所有評論"""
-    # 獲取查詢參數
+    """Get all reviews by a specific user"""
+    # Get query parameters
     page = request.args.get("page", 1, type=int)
     limit = request.args.get("limit", 20, type=int)
     offset = (page - 1) * limit
     
     try:
-        # 獲取用戶評論
+        # Get user reviews
         query = """
         SELECT * FROM Reviews 
         WHERE UserId = ? 
@@ -447,7 +447,7 @@ def get_user_reviews(user_id):
         """
         reviews = execute_query(query, (user_id, limit, offset))
         
-        # 獲取用戶評論統計
+        # Get user review statistics
         stats_query = """
         SELECT 
             UserId, 
@@ -460,7 +460,7 @@ def get_user_reviews(user_id):
         """
         stats = execute_query(stats_query, (user_id,))
         
-        # 獲取總記錄數（用於分頁）
+        # Get total record count (for pagination)
         count_query = "SELECT COUNT(*) as total FROM Reviews WHERE UserId = ?"
         count_results = execute_query(count_query, (user_id,))
         total = count_results[0]['total'] if count_results else 0
@@ -479,53 +479,53 @@ def get_user_reviews(user_id):
 
 @app.route("/api/search", methods=["GET"])
 @swag_from({
-    "tags": ["搜索"],
-    "summary": "搜索評論",
-    "description": "使用關鍵字搜索評論",
+    "tags": ["Search"],
+    "summary": "Search reviews",
+    "description": "Search reviews using keywords",
     "parameters": [
         {
             "name": "q",
             "in": "query",
             "type": "string",
             "required": True,
-            "description": "搜索關鍵詞"
+            "description": "Search keyword"
         },
         {
             "name": "page",
             "in": "query",
             "type": "integer",
             "default": 1,
-            "description": "頁碼"
+            "description": "Page number"
         },
         {
             "name": "limit",
             "in": "query",
             "type": "integer",
             "default": 20,
-            "description": "每頁結果數量"
+            "description": "Number of results per page"
         }
     ],
     "responses": {
         "200": {
-            "description": "成功獲取搜索結果"
+            "description": "Successfully retrieved search results"
         },
         "400": {
-            "description": "搜索查詢不能為空"
+            "description": "Search query cannot be empty"
         }
     }
 })
 def search_reviews():
-    """使用關鍵字搜索評論"""
+    """Search reviews using keywords"""
     query_text = request.args.get("q", "")
     if not query_text:
-        return jsonify({"error": "必須提供搜索關鍵詞"}), 400
+        return jsonify({"error": "Search keyword must be provided"}), 400
     
-    # 獲取查詢參數
+    # Get query parameters
     page = request.args.get("page", 1, type=int)
     limit = request.args.get("limit", 20, type=int)
     offset = (page - 1) * limit
     
-    # 構建搜索查詢
+    # Build search query
     search_query = """
     SELECT * FROM Reviews 
     WHERE Text LIKE ? OR Summary LIKE ? 
@@ -535,10 +535,10 @@ def search_reviews():
     search_params = (f"%{query_text}%", f"%{query_text}%", limit, offset)
     
     try:
-        # 執行查詢
+        # Execute query
         results = execute_query(search_query, search_params)
         
-        # 獲取總記錄數（用於分頁）
+        # Get total record count (for pagination)
         count_query = "SELECT COUNT(*) as total FROM Reviews WHERE Text LIKE ? OR Summary LIKE ?"
         count_params = (f"%{query_text}%", f"%{query_text}%")
         count_results = execute_query(count_query, count_params)
@@ -557,9 +557,9 @@ def search_reviews():
 
 @app.route("/api/query", methods=["POST"])
 @swag_from({
-    "tags": ["搜索"],
-    "summary": "自然語言查詢評論",
-    "description": "使用自然語言查詢評論，由 Gemini API 解析",
+    "tags": ["Search"],
+    "summary": "Natural language query for reviews",
+    "description": "Query reviews using natural language, parsed by Gemini API",
     "parameters": [
         {
             "name": "body",
@@ -570,7 +570,7 @@ def search_reviews():
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "自然語言查詢"
+                        "description": "Natural language query"
                     }
                 },
                 "required": ["query"]
@@ -579,62 +579,62 @@ def search_reviews():
     ],
     "responses": {
         "200": {
-            "description": "成功獲取查詢結果"
+            "description": "Successfully retrieved query results"
         },
         "400": {
-            "description": "查詢不能為空"
+            "description": "Query cannot be empty"
         },
         "500": {
-            "description": "處理查詢時發生錯誤"
+            "description": "Error occurred while processing query"
         }
     }
 })
 def query_reviews():
-    """使用自然語言查詢評論（使用 Gemini API）"""
+    """Query reviews using natural language (using Gemini API)"""
     data = request.get_json()
     if not data or "query" not in data:
-        return jsonify({"error": "必須提供自然語言查詢"}), 400
+        return jsonify({"error": "Natural language query must be provided"}), 400
 
     user_query = data["query"]
 
-    # 使用 Gemini API 解析查詢
+    # Use Gemini API to parse the query
     prompt = f"""
-    根據以下自然語言查詢，提取關於Amazon食品評論的搜索關鍵信息。
-    請以JSON格式回傳以下欄位（如果有相關信息）：
-    - keyword: 評論中的關鍵詞
-    - min_score: 最低評分 (1-5)
-    - max_score: 最高評分 (1-5)
-    - product: 特定產品名稱或ID
-    - user: 特定用戶名稱或ID
-    - sentiment: 情感傾向 (positive, negative, neutral)
+    Based on the following natural language query, extract key search information for Amazon food reviews.
+    Please return the following fields in JSON format (if relevant information exists):
+    - keyword: Keywords in the review
+    - min_score: Minimum rating (1-5)
+    - max_score: Maximum rating (1-5)
+    - product: Specific product name or ID
+    - user: Specific user name or ID
+    - sentiment: Sentiment orientation (positive, negative, neutral)
 
-    例如：如果查詢是"找出評分是5星的巧克力評論"，應返回：{{"keyword": "巧克力", "min_score": 5, "max_score": 5}}
+    For example: If the query is "Find 5-star chocolate reviews", you should return: {{"keyword": "chocolate", "min_score": 5, "max_score": 5}}
 
-    查詢: {user_query}
+    Query: {user_query}
     """
 
     try:
-        print(f"正在處理查詢: {user_query}")
+        print(f"Processing query: {user_query}")
         gemini_response = client.models.generate_content(
             model=MODEL_NAME,
             contents=prompt,
             config=types.GenerateContentConfig(response_mime_type="application/json"),
         )
-        print(f"Gemini API 原始回應: {gemini_response.text}")
+        print(f"Gemini API raw response: {gemini_response.text}")
         
-        # 解析 Gemini 回應
+        # Parse Gemini response
         try:
             structured_query = json.loads(gemini_response.text)
-            print(f"結構化查詢內容: {structured_query}")
+            print(f"Structured query content: {structured_query}")
         except json.JSONDecodeError as json_err:
-            print(f"JSON解析錯誤: {json_err}. 原始回應: {gemini_response.text}")
-            return jsonify({"error": f"無法解析模型回應為JSON: {str(json_err)}"}), 500
+            print(f"JSON parsing error: {json_err}. Original response: {gemini_response.text}")
+            return jsonify({"error": f"Cannot parse model response as JSON: {str(json_err)}"}), 500
 
-        # 根據結構化查詢搜索評論
+        # Search reviews based on structured query
         sql_query = "SELECT * FROM Reviews WHERE 1=1"
         params = []
         
-        # 處理評分範圍
+        # Handle rating range
         if "min_score" in structured_query and structured_query["min_score"]:
             sql_query += " AND Score >= ?"
             params.append(structured_query["min_score"])
@@ -643,37 +643,37 @@ def query_reviews():
             sql_query += " AND Score <= ?"
             params.append(structured_query["max_score"])
         
-        # 處理關鍵詞
+        # Handle keywords
         if "keyword" in structured_query and structured_query["keyword"]:
             keyword = structured_query["keyword"]
             sql_query += " AND (Text LIKE ? OR Summary LIKE ?)"
             params.extend([f"%{keyword}%", f"%{keyword}%"])
         
-        # 處理特定產品
+        # Handle specific product
         if "product" in structured_query and structured_query["product"]:
             product = structured_query["product"]
-            # 嘗試直接匹配產品ID或在文本中搜索
+            # Try to match product ID directly or search in text
             sql_query += " AND (ProductId = ? OR Text LIKE ? OR Summary LIKE ?)"
             params.extend([product, f"%{product}%", f"%{product}%"])
         
-        # 處理特定用戶
+        # Handle specific user
         if "user" in structured_query and structured_query["user"]:
             user = structured_query["user"]
-            # 嘗試匹配用戶ID或名稱
+            # Try to match user ID or name
             sql_query += " AND (UserId = ? OR ProfileName LIKE ?)"
             params.extend([user, f"%{user}%"])
             
-        # 排序和限制結果
+        # Sort and limit results
         sql_query += " ORDER BY Time DESC LIMIT 50"
         
-        # 執行查詢
+        # Execute query
         results = execute_query(sql_query, tuple(params) if params else None)
         
-        # 如果有情感分析要求，可以使用Gemini進行分析
+        # If sentiment analysis is requested, Gemini can be used for analysis
         if "sentiment" in structured_query and structured_query["sentiment"] and results:
             sentiment = structured_query["sentiment"].lower()
-            # 這裡可以實現更複雜的情感過濾邏輯
-            # 目前只是簡單示例
+            # More complex sentiment filtering logic can be implemented here
+            # This is just a simple example
             
         return jsonify({
             "query": user_query,
@@ -683,31 +683,31 @@ def query_reviews():
         })
         
     except Exception as e:
-        print(f"查詢處理錯誤: {e}")
+        print(f"Query processing error: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route("/api/debug", methods=["GET"])
 @swag_from({
-    "tags": ["系統"],
-    "summary": "調試系統狀態",
-    "description": "獲取系統數據加載狀態信息",
+    "tags": ["System"],
+    "summary": "Debug system status",
+    "description": "Get system data loading status information",
     "responses": {
         "200": {
-            "description": "成功獲取系統狀態"
+            "description": "Successfully retrieved system status"
         }
     }
 })
 def debug():
-    """調試端點，用於檢視數據庫狀態"""
+    """Debug endpoint for viewing database status"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # 獲取資料表列表
+        # Get list of tables
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
         tables = [dict(row) for row in cursor.fetchall()]
         
-        # 獲取各表記錄數
+        # Get record count for each table
         table_counts = {}
         for table in tables:
             table_name = table['name']
@@ -732,25 +732,25 @@ def debug():
 
 @app.route('/favicon.ico')
 def favicon():
-    """提供網站圖標"""
+    """Provide website icon"""
     return send_from_directory(os.path.join(app.root_path, 'static'),
                                'favicon.ico', mimetype='image/vnd.microsoft.icon')
 
 if __name__ == "__main__":
     if not GEMINI_API_KEY:
-        print("錯誤：未設置 GEMINI_API_KEY 環境變數")
+        print("Error: GEMINI_API_KEY environment variable not set")
         exit(1)
 
-    print("初始化Amazon Fine Food Reviews系統...")
+    print("Initializing Amazon Fine Food Reviews system...")
     
     if not os.path.exists(DB_PATH):
-        print(f"警告：找不到資料庫文件: {DB_PATH}")
-        print("請先運行 download_data.sh 下載數據")
+        print(f"Warning: Database file not found: {DB_PATH}")
+        print("Please run download_data.sh to download the data first")
     else:
-        print(f"資料庫檔案已存在: {DB_PATH}")
+        print(f"Database file exists: {DB_PATH}")
         check_database()
     
-    # 使用環境變數來控制 debug 模式，預設為 False（安全模式）
+    # Use environment variable to control debug mode, default is False (safe mode)
     debug_mode = os.getenv("FLASK_DEBUG", "False").lower() == "true"
     
     app.run(debug=debug_mode) 

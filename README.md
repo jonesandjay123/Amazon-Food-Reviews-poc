@@ -54,6 +54,7 @@
 
 ### 下載數據
 
+#### 選項1：使用提供的腳本（推薦）
 執行以下命令下載並解壓 Amazon Fine Food Reviews 數據集：
 
 ```bash
@@ -62,6 +63,14 @@ chmod +x download_data.sh
 ```
 
 這將下載數據庫文件並將其解壓到 `data` 目錄中。
+
+#### 選項2：手動下載
+如果您無法使用 Kaggle CLI 或遇到問題，可以手動下載數據：
+
+1. 手動從 Kaggle 下載數據集：[Amazon Fine Food Reviews](https://www.kaggle.com/datasets/snap/amazon-fine-food-reviews)
+2. 解壓縮下載的文件，獲取 `database.sqlite` 文件
+3. 如果項目根目錄中沒有 `data` 目錄，請創建一個
+4. 將 `database.sqlite` 文件放入 `data` 目錄中
 
 ## 運行應用
 
@@ -130,7 +139,7 @@ python app.py
    ```bash
    curl -X POST http://localhost:5000/api/query \
      -H "Content-Type: application/json" \
-     -d '{"query":"Find 5-star reviews for chocolate"}'
+     -d '{"query":"找出有關巧克力的五星評論"}'
    ```
 
 2. **獲取評論列表**：
@@ -171,9 +180,11 @@ https://www.kaggle.com/datasets/snap/amazon-fine-food-reviews
 
 1. **Kaggle API 驗證錯誤**：
    - 確認 `~/.kaggle/kaggle.json` 文件存在並有正確的權限
+   - 如果使用手動下載方法，可以忽略此錯誤
 
 2. **數據庫文件不存在**：
    - 執行 `./download_data.sh` 下載數據庫文件
+   - 或按照「選項2：手動下載」中的步驟手動下載
    - 確認 `data/database.sqlite` 文件存在
 
 3. **Gemini API 錯誤**：

@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Amazon食品評論 API 文檔</title>
+    <title>Amazon Food Reviews API Documentation</title>
     <style>
       body {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
@@ -86,67 +86,67 @@
   </head>
   <body>
     <header>
-      <h1>Amazon食品評論 API 文檔</h1>
-      <p>透過 RESTful API 探索我們的食品評論數據集</p>
+      <h1>Amazon Food Reviews API Documentation</h1>
+      <p>Explore our food review dataset through RESTful API</p>
     </header>
 
     <div class="nav-links">
-      <a href="/">返回聊天介面</a>
-      <a href="/api/docs/">查看 Swagger UI</a>
+      <a href="/">Return to Chat Interface</a>
+      <a href="/api/docs/">View Swagger UI</a>
     </div>
 
     <div class="container">
       <div class="card">
         <h2>Swagger UI</h2>
-        <p>使用互動式 Swagger UI 界面測試我們的 API：</p>
+        <p>Use the interactive Swagger UI interface to test our API:</p>
         <ul>
-          <li>可視化 API 結構</li>
-          <li>即時測試端點功能</li>
-          <li>查看詳細的參數和響應</li>
+          <li>Visualize API structure</li>
+          <li>Test endpoints in real-time</li>
+          <li>View detailed parameters and responses</li>
         </ul>
-        <a href="/api/docs/" class="button">查看 Swagger UI</a>
+        <a href="/api/docs/" class="button">View Swagger UI</a>
       </div>
 
       <div class="card">
-        <h2>常用 API 端點</h2>
+        <h2>Common API Endpoints</h2>
         <div class="api-section">
-          <h3>評論列表</h3>
+          <h3>Review List</h3>
           <code>GET /api/reviews</code>
-          <p>獲取評論列表，支持分頁和評分過濾</p>
+          <p>Get a list of reviews, supports pagination and rating filters</p>
         </div>
         <div class="api-section">
-          <h3>評論詳情</h3>
+          <h3>Review Details</h3>
           <code>GET /api/reviews/{review_id}</code>
-          <p>獲取特定評論的詳細信息</p>
+          <p>Get detailed information for a specific review</p>
         </div>
         <div class="api-section">
-          <h3>產品評論</h3>
+          <h3>Product Reviews</h3>
           <code>GET /api/product/{product_id}</code>
-          <p>獲取特定產品的所有評論</p>
+          <p>Get all reviews for a specific product</p>
         </div>
         <div class="api-section">
-          <h3>用戶評論</h3>
+          <h3>User Reviews</h3>
           <code>GET /api/user/{user_id}</code>
-          <p>獲取特定用戶的所有評論</p>
+          <p>Get all reviews by a specific user</p>
         </div>
         <div class="api-section">
-          <h3>自然語言查詢</h3>
+          <h3>Natural Language Query</h3>
           <code>POST /api/query</code>
-          <p>使用自然語言查詢評論數據集</p>
+          <p>Query the review dataset using natural language</p>
         </div>
       </div>
     </div>
 
     <div class="container" style="margin-top: 20px">
       <div class="card">
-        <h2>使用範例</h2>
-        <p>使用 curl 查詢評分為5星的評論：</p>
+        <h2>Usage Examples</h2>
+        <p>Use curl to query reviews with a 5-star rating:</p>
         <pre><code>curl "http://localhost:5000/api/reviews?min_score=5&limit=10"</code></pre>
 
-        <p>使用自然語言查詢：</p>
+        <p>Use natural language query:</p>
         <pre><code>curl -X POST "http://localhost:5000/api/query" \
   -H "Content-Type: application/json" \
-  -d '{"query": "找出有關巧克力的五星評論"}'</code></pre>
+  -d '{"query": "Find 5-star reviews for chocolate"}'</code></pre>
       </div>
     </div>
   </body>

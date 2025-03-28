@@ -4,24 +4,24 @@ document.addEventListener("DOMContentLoaded", function () {
   const userInput = document.getElementById("user-input");
   const sendButton = document.getElementById("send-button");
 
-  // 提交表單處理
+  // Form submission handling
   queryForm.addEventListener("submit", async function (e) {
     e.preventDefault();
 
     const userQuery = userInput.value.trim();
     if (!userQuery) return;
 
-    // 清空輸入框
+    // Clear input field
     userInput.value = "";
 
-    // 添加用戶消息到聊天界面
+    // Add user message to chat interface
     addMessage("user", userQuery);
 
-    // 顯示加載指示器
+    // Show loading indicator
     const loadingElement = addLoadingIndicator();
 
     try {
-      // 發送請求到 /api/query 端點
+      // Send request to /api/query endpoint
       const queryResponse = await fetch("/api/query", {
         method: "POST",
         headers: {
@@ -32,29 +32,29 @@ document.addEventListener("DOMContentLoaded", function () {
 
       const queryData = await queryResponse.json();
 
-      // 移除加載指示器
+      // Remove loading indicator
       messageContainer.removeChild(loadingElement);
 
-      // 顯示結果
+      // Display results
       if (queryData.error) {
-        // 查詢失敗
-        addMessage("system", `抱歉，查詢失敗：${queryData.error}`);
+        // Query failed
+        addMessage("system", `Sorry, query failed: ${queryData.error}`);
       } else if (queryData.results && queryData.results.length > 0) {
-        // 顯示查詢結果
+        // Show query results
         const formattedResults = formatReviewResults(queryData);
         addMessage("system", formattedResults);
       } else {
-        // 沒有結果
-        addMessage("system", "抱歉，我找不到相關食品評論信息。");
+        // No results
+        addMessage("system", "Sorry, I couldn't find any relevant food review information.");
       }
     } catch (error) {
       console.error("Error:", error);
       messageContainer.removeChild(loadingElement);
-      addMessage("system", "抱歉，出現了網絡錯誤，請稍後再試。");
+      addMessage("system", "Sorry, a network error occurred. Please try again later.");
     }
   });
 
-  // 添加消息到聊天界面
+  // Add message to chat interface
   function addMessage(type, content) {
     const messageDiv = document.createElement("div");
     messageDiv.className = type === "user" ? "user-message" : "system-message";
@@ -62,17 +62,17 @@ document.addEventListener("DOMContentLoaded", function () {
     if (type === "user") {
       messageDiv.innerHTML = `<p>${escapeHTML(content)}</p>`;
     } else {
-      // 系統消息可能包含格式化的內容
+      // System messages may contain formatted content
       messageDiv.innerHTML = content;
     }
 
     messageContainer.appendChild(messageDiv);
 
-    // 滾動到底部
+    // Scroll to bottom
     messageContainer.scrollTop = messageContainer.scrollHeight;
   }
 
-  // 添加加載指示器
+  // Add loading indicator
   function addLoadingIndicator() {
     const loadingDiv = document.createElement("div");
     loadingDiv.className = "loading";
@@ -82,70 +82,70 @@ document.addEventListener("DOMContentLoaded", function () {
     return loadingDiv;
   }
 
-  // 格式化評論結果
+  // Format review results
   function formatReviewResults(data) {
-    let html = `<p>查詢「${escapeHTML(data.query)}」的結果：</p>`;
+    let html = `<p>Results for query "${escapeHTML(data.query)}":</p>`;
 
-    // 如果有解釋的查詢參數，顯示它
+    // If there are interpreted query parameters, display them
     if (data.interpreted_as) {
-      html += "<p><small>我理解您在查詢：";
+      html += "<p><small>I understand you're looking for: ";
       const params = [];
       if (data.interpreted_as.keyword)
-        params.push(`關鍵詞「${data.interpreted_as.keyword}」的評論`);
+        params.push(`Reviews with keyword "${data.interpreted_as.keyword}"`);
       if (data.interpreted_as.min_score)
-        params.push(`評分至少 ${data.interpreted_as.min_score} 星的評論`);
+        params.push(`Reviews with at least ${data.interpreted_as.min_score} stars`);
       if (data.interpreted_as.max_score)
-        params.push(`評分至多 ${data.interpreted_as.max_score} 星的評論`);
+        params.push(`Reviews with at most ${data.interpreted_as.max_score} stars`);
       if (data.interpreted_as.product)
-        params.push(`產品「${data.interpreted_as.product}」的評論`);
+        params.push(`Reviews for product "${data.interpreted_as.product}"`);
       if (data.interpreted_as.user)
-        params.push(`用戶「${data.interpreted_as.user}」的評論`);
+        params.push(`Reviews by user "${data.interpreted_as.user}"`);
       if (data.interpreted_as.sentiment)
-        params.push(`情感傾向為「${data.interpreted_as.sentiment}」的評論`);
-      html += params.join("，") || "所有評論";
+        params.push(`Reviews with sentiment "${data.interpreted_as.sentiment}"`);
+      html += params.join(", ") || "All reviews";
       html += "</small></p>";
     }
 
-    html += `<p>找到 ${data.results_count} 條相關評論：</p><ol>`;
+    html += `<p>Found ${data.results_count} relevant reviews:</p><ol>`;
 
     data.results.forEach((review) => {
       html += "<li>";
 
-      // 標題和星級
+      // Title and star rating
       if (review.Summary) {
         html += `<strong>${escapeHTML(review.Summary)}</strong>`;
       }
       
-      // 評分
+      // Rating
       if (review.Score) {
         const stars = '★'.repeat(review.Score) + '☆'.repeat(5 - review.Score);
-        html += ` - 評分: ${stars} (${review.Score}/5)`;
+        html += ` - Rating: ${stars} (${review.Score}/5)`;
       }
 
-      // 產品ID
+      // Product ID
       if (review.ProductId) {
-        html += `<br>產品ID: ${escapeHTML(review.ProductId)}`;
+        html += `<br>Product ID: ${escapeHTML(review.ProductId)}`;
       }
 
-      // 用戶名
+      // User name
       if (review.ProfileName) {
-        html += `<br>用戶: ${escapeHTML(review.ProfileName)}`;
+        html += `<br>User: ${escapeHTML(review.ProfileName)}`;
       }
 
-      // 時間
+      // Time
       if (review.Time) {
         const date = new Date(review.Time * 1000);
-        html += `<br>評論時間: ${date.toLocaleDateString()}`;
+        html += `<br>Review date: ${date.toLocaleDateString()}`;
       }
 
-      // 有用度
+      // Helpfulness
       if (review.HelpfulnessNumerator !== undefined && review.HelpfulnessDenominator !== undefined) {
-        html += `<br>有用度: ${review.HelpfulnessNumerator}/${review.HelpfulnessDenominator}`;
+        html += `<br>Helpfulness: ${review.HelpfulnessNumerator}/${review.HelpfulnessDenominator}`;
       }
 
-      // 評論文本
+      // Review text
       if (review.Text) {
-        // 只顯示評論的前150個字符
+        // Only show the first 150 characters of the review
         const shortText =
           review.Text.length > 150
             ? review.Text.substring(0, 150) + "..."
@@ -160,7 +160,7 @@ document.addEventListener("DOMContentLoaded", function () {
     return html;
   }
 
-  // 轉義 HTML 以防止 XSS 攻擊
+  // Escape HTML to prevent XSS attacks
   function escapeHTML(str) {
     if (!str) return "";
     return str
