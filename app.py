@@ -69,7 +69,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 # Create Google GenAI API client
 client = genai.Client(api_key=GEMINI_API_KEY)
-MODEL_NAME = "gemini-2.0-flash"
+MODEL_NAME = "gemini-2.5-pro-exp-03-25"
 
 # Set database path
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
