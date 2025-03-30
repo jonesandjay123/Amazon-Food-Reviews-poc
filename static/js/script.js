@@ -3,6 +3,10 @@ document.addEventListener("DOMContentLoaded", function () {
   const queryForm = document.getElementById("query-form");
   const userInput = document.getElementById("user-input");
   const sendButton = document.getElementById("send-button");
+  const clearButton = document.getElementById("clear-button");
+  
+  // 保存初始的系統歡迎消息
+  const initialSystemMessage = messageContainer.innerHTML;
 
   // Form submission handling
   queryForm.addEventListener("submit", async function (e) {
@@ -171,4 +175,10 @@ document.addEventListener("DOMContentLoaded", function () {
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#039;");
   }
+  
+  // 清除按鈕點擊事件處理
+  clearButton.addEventListener("click", function() {
+    // 將消息容器內容重置為初始歡迎消息
+    messageContainer.innerHTML = initialSystemMessage;
+  });
 });

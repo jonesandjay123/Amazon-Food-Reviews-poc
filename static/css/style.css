@@ -140,6 +140,21 @@ body {
   background-color: #3367d6;
 }
 
+#clear-button {
+  background-color: #f44336; /* 紅色調 */
+  color: white;
+  border: none;
+  border-radius: 25px;
+  padding: 12px 20px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: background-color 0.2s;
+}
+
+#clear-button:hover {
+  background-color: #d32f2f; /* 深紅色調 */
+}
+
 .loading {
   display: flex;
   padding: 10px;
