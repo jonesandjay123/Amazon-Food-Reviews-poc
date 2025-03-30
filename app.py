@@ -1,15 +1,16 @@
 import os
-import json
-import time
 import sqlite3
 from pathlib import Path
 
 import pandas as pd
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request, send_from_directory
-from google import genai  # Import method for new SDK
-from google.genai import types  # For passing GenerateContentConfig
 from flasgger import Swagger, swag_from
+
+# initialize model
+from gemini_model import GeminiModel
+# optional model for future use
+# from chatgpt_model import ChatGPTModel
 
 # Load environment variables
 load_dotenv()
@@ -64,12 +65,27 @@ swagger_template = {
 
 swagger = Swagger(app, config=swagger_config, template=swagger_template)
 
-# Set Gemini API credentials
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+# initialize model
+# can be controlled by environment variable
+AI_MODEL_TYPE = os.getenv("AI_MODEL_TYPE", "GEMINI").upper()
+ai_model = None
 
-# Create Google GenAI API client
-client = genai.Client(api_key=GEMINI_API_KEY)
-MODEL_NAME = "gemini-2.5-pro-exp-03-25"
+try:
+    if AI_MODEL_TYPE == "GEMINI":
+        ai_model = GeminiModel()
+        print("Using Gemini AI model")
+    elif AI_MODEL_TYPE == "CHATGPT":
+        # Uncomment when ChatGPT model is ready
+        # ai_model = ChatGPTModel()
+        # print("Using ChatGPT AI model")
+        print("ChatGPT model not implemented yet, falling back to Gemini")
+        ai_model = GeminiModel()
+    else:
+        print(f"Unknown AI_MODEL_TYPE: {AI_MODEL_TYPE}, falling back to Gemini")
+        ai_model = GeminiModel()
+except Exception as e:
+    print(f"Error initializing AI model: {e}")
+    # in real application, it may need to terminate the application or provide a backup plan
 
 # Set database path
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
@@ -559,7 +575,7 @@ def search_reviews():
 @swag_from({
     "tags": ["Search"],
     "summary": "Natural language query for reviews",
-    "description": "Query reviews using natural language, parsed by Gemini API",
+    "description": "Query reviews using natural language, parsed by AI API",
     "parameters": [
         {
             "name": "body",
@@ -590,45 +606,16 @@ def search_reviews():
     }
 })
 def query_reviews():
-    """Query reviews using natural language (using Gemini API)"""
+    """Query reviews using natural language (using AI API)"""
     data = request.get_json()
     if not data or "query" not in data:
         return jsonify({"error": "Natural language query must be provided"}), 400
 
     user_query = data["query"]
 
-    # Use Gemini API to parse the query
-    prompt = f"""
-    Based on the following natural language query, extract key search information for Amazon food reviews.
-    Please return the following fields in JSON format (if relevant information exists):
-    - keyword: Keywords in the review
-    - min_score: Minimum rating (1-5)
-    - max_score: Maximum rating (1-5)
-    - product: Specific product name or ID
-    - user: Specific user name or ID
-    - sentiment: Sentiment orientation (positive, negative, neutral)
-
-    For example: If the query is "Find 5-star chocolate reviews", you should return: {{"keyword": "chocolate", "min_score": 5, "max_score": 5}}
-
-    Query: {user_query}
-    """
-
     try:
-        print(f"Processing query: {user_query}")
-        gemini_response = client.models.generate_content(
-            model=MODEL_NAME,
-            contents=prompt,
-            config=types.GenerateContentConfig(response_mime_type="application/json"),
-        )
-        print(f"Gemini API raw response: {gemini_response.text}")
-        
-        # Parse Gemini response
-        try:
-            structured_query = json.loads(gemini_response.text)
-            print(f"Structured query content: {structured_query}")
-        except json.JSONDecodeError as json_err:
-            print(f"JSON parsing error: {json_err}. Original response: {gemini_response.text}")
-            return jsonify({"error": f"Cannot parse model response as JSON: {str(json_err)}"}), 500
+        # use AI model to parse query
+        structured_query = ai_model.parse_natural_language_query(user_query)
 
         # Search reviews based on structured query
         sql_query = "SELECT * FROM Reviews WHERE 1=1"
@@ -668,12 +655,6 @@ def query_reviews():
         
         # Execute query
         results = execute_query(sql_query, tuple(params) if params else None)
-        
-        # If sentiment analysis is requested, Gemini can be used for analysis
-        if "sentiment" in structured_query and structured_query["sentiment"] and results:
-            sentiment = structured_query["sentiment"].lower()
-            # More complex sentiment filtering logic can be implemented here
-            # This is just a simple example
             
         return jsonify({
             "query": user_query,
@@ -737,8 +718,9 @@ def favicon():
                                'favicon.ico', mimetype='image/vnd.microsoft.icon')
 
 if __name__ == "__main__":
-    if not GEMINI_API_KEY:
-        print("Error: GEMINI_API_KEY environment variable not set")
+    # check if database and AI model are initialized correctly
+    if not ai_model:
+        print("Error: AI model initialization failed")
         exit(1)
 
     print("Initializing Amazon Fine Food Reviews system...")
