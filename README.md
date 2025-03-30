@@ -206,4 +206,82 @@ The database file (`database.sqlite`) contains the following information:
 
 ### System
 
-- `GET /api/debug` - Check system status 
+- `GET /api/debug` - Check system status
+- `GET /api/system_status` - Get detailed system status including LangChain availability
+- `POST /api/toggle_langchain` - Toggle LangChain mode
+
+## LangChain Enhanced Features
+
+This project now includes advanced capabilities through LangChain integration, enabling more sophisticated natural language processing and multi-step reasoning. LangChain uses a chain of tools to break down complex queries into sequences of steps.
+
+### Enabling LangChain
+
+There are three ways to enable LangChain:
+
+1. **Environment variable**: Set `USE_LANGCHAIN=true` in your environment or `.env` file.
+2. **Toggle in UI**: Use the toggle switch in the top right corner of the chat interface.
+3. **API parameter**: Add `"force_langchain": true` to your API requests.
+
+```bash
+# Example of toggling LangChain via API
+curl -X POST http://localhost:5000/api/toggle_langchain \
+  -H "Content-Type: application/json" \
+  -d '{"enable_langchain": true}'
+```
+
+### Comparing Standard RAG vs. LangChain
+
+The table below shows the key differences between the standard RAG approach and LangChain enhanced queries:
+
+| Feature | Standard RAG | LangChain Enhanced |
+|---------|-------------|-------------------|
+| Query complexity | Single-step, direct mapping to SQL | Multi-step reasoning, dynamic query construction |
+| Self-correction | No | Yes, can adjust queries based on intermediate results |
+| Analysis depth | Basic | In-depth with data aggregation capabilities |
+| Interactive | No | Can suggest related queries |
+| Data insights | Limited to direct results | Provides broader context and patterns |
+
+### Sample Complex Queries for LangChain
+
+LangChain excels with complex queries that require multiple steps or deeper analysis. Try these examples to see the difference:
+
+1. **Multi-step aggregation queries**:
+   - "What are the top 5 products with the most reviews in the last 3 years?"
+   - "Show me which products have higher than average ratings but with at least 10 reviews"
+
+2. **Trend analysis**:
+   - "Has the average rating for chocolate products improved over time?"
+   - "Are people writing longer reviews for highly rated products?"
+
+3. **Complex filtering with analytics**:
+   - "Find users who gave both 5-star and 1-star ratings and compare their review styles"
+   - "Which products have polarizing reviews (many 5-star and many 1-star ratings)?"
+
+4. **Comparative analysis**:
+   - "Compare reviews for products B001E4KFG0 and B000LQOCH0 in terms of sentiment and common keywords"
+   - "What are the most common complaints in negative reviews for highly rated products?"
+
+### Testing the Difference
+
+To experience the full power of LangChain, try running the same complex query with and without LangChain enabled:
+
+1. Toggle LangChain OFF and ask: "What products have the most helpful reviews for chocolate with at least a 4-star rating?"
+2. Toggle LangChain ON and ask the same question.
+
+Notice how the LangChain version provides:
+- More comprehensive results
+- Step-by-step reasoning
+- Additional insights
+- Better structured data
+
+### Viewing LangChain's Reasoning
+
+When using the UI with LangChain enabled, you'll see a "Show reasoning steps" dropdown that reveals how LangChain broke down your query and the intermediate steps it took to arrive at the answer. This transparency helps understand the system's reasoning process.
+
+## Future Plans
+
+We plan to enhance the LangChain integration by:
+1. Adding more specialized tools for deeper analysis
+2. Implementing conversation memory for follow-up questions
+3. Supporting more complex data visualization capabilities
+4. Adding automatic insight generation for all queries 

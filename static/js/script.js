@@ -4,8 +4,10 @@ document.addEventListener("DOMContentLoaded", function () {
   const userInput = document.getElementById("user-input");
   const sendButton = document.getElementById("send-button");
   const clearButton = document.getElementById("clear-button");
+  const langchainToggle = document.getElementById("langchain-toggle");
+  const langchainStatus = document.getElementById("langchain-status");
   
-  // 保存初始的系統歡迎消息
+  // Store the initial system message
   const initialSystemMessage = messageContainer.innerHTML;
 
   // Form submission handling
@@ -25,13 +27,19 @@ document.addEventListener("DOMContentLoaded", function () {
     const loadingElement = addLoadingIndicator();
 
     try {
+      // Get LangChain status
+      const useLangChain = langchainToggle.checked;
+      
       // Send request to /api/query endpoint
       const queryResponse = await fetch("/api/query", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ query: userQuery }),
+        body: JSON.stringify({ 
+          query: userQuery,
+          force_langchain: useLangChain
+        }),
       });
 
       const queryData = await queryResponse.json();
@@ -44,9 +52,13 @@ document.addEventListener("DOMContentLoaded", function () {
         // Query failed
         addMessage("system", `Sorry, query failed: ${queryData.error}`);
       } else if (queryData.results && queryData.results.length > 0) {
-        // Show query results
+        // Standard RAG results
         const formattedResults = formatReviewResults(queryData);
         addMessage("system", formattedResults);
+      } else if (queryData.response) {
+        // LangChain response
+        const formattedResponse = formatLangChainResponse(queryData);
+        addMessage("system", formattedResponse);
       } else {
         // No results
         addMessage("system", "Sorry, I couldn't find any relevant food review information.");
@@ -86,9 +98,45 @@ document.addEventListener("DOMContentLoaded", function () {
     return loadingDiv;
   }
 
+  // Format LangChain response
+  function formatLangChainResponse(data) {
+    let html = `<div class="langchain-response">`;
+    
+    // Main response
+    html += `<div class="response-content">${data.response}</div>`;
+    
+    // Show query method badge
+    const queryMethod = data.query_metadata?.query_method || "langchain";
+    html += `<div class="query-method-badge ${queryMethod}">${queryMethod.toUpperCase()}</div>`;
+    
+    // Show intermediate steps if available (collapsible)
+    if (data.intermediate_steps && data.intermediate_steps.length > 0) {
+      html += `<details class="intermediate-steps">
+        <summary>Show reasoning steps (${data.intermediate_steps.length})</summary>
+        <ol>`;
+      
+      data.intermediate_steps.forEach(step => {
+        html += `<li>
+          <strong>Tool:</strong> ${escapeHTML(step.tool)}<br>
+          <strong>Input:</strong> <code>${escapeHTML(step.input)}</code><br>
+          <strong>Result:</strong> <pre>${escapeHTML(step.result)}</pre>
+        </li>`;
+      });
+      
+      html += `</ol></details>`;
+    }
+    
+    html += `</div>`;
+    return html;
+  }
+
   // Format review results
   function formatReviewResults(data) {
     let html = `<p>Results for query "${escapeHTML(data.query)}":</p>`;
+
+    // Show query method badge
+    const queryMethod = data.query_metadata?.query_method || "standard_rag";
+    html += `<div class="query-method-badge ${queryMethod}">${queryMethod.toUpperCase()}</div>`;
 
     // If there are interpreted query parameters, display them
     if (data.interpreted_as) {
@@ -176,9 +224,42 @@ document.addEventListener("DOMContentLoaded", function () {
       .replace(/'/g, "&#039;");
   }
   
-  // 清除按鈕點擊事件處理
+  // LangChain toggle event handler
+  langchainToggle.addEventListener("change", async function() {
+    const isEnabled = langchainToggle.checked;
+    langchainStatus.textContent = `LangChain: ${isEnabled ? 'ON' : 'OFF'}`;
+    
+    try {
+      // Call API to toggle LangChain mode
+      const response = await fetch("/api/toggle_langchain", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ enable_langchain: isEnabled }),
+      });
+      
+      const data = await response.json();
+      console.log("LangChain toggle response:", data);
+      
+      // Add system message about the change
+      const message = isEnabled 
+        ? "LangChain Agent enabled. Try asking more complex questions!"
+        : "LangChain Agent disabled. Using standard RAG approach.";
+      
+      addMessage("system", `<p>${message}</p>`);
+    } catch (error) {
+      console.error("Error toggling LangChain:", error);
+      addMessage("system", "Sorry, there was an error toggling LangChain mode.");
+      // Revert toggle state on error
+      langchainToggle.checked = !isEnabled;
+      langchainStatus.textContent = `LangChain: ${!isEnabled ? 'ON' : 'OFF'}`;
+    }
+  });
+
+  // Clear button event listener
   clearButton.addEventListener("click", function() {
-    // 將消息容器內容重置為初始歡迎消息
+    // Clear the message container, but keep the initial system message
     messageContainer.innerHTML = initialSystemMessage;
   });
 });

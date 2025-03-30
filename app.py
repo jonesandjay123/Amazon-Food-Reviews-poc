@@ -1,4 +1,6 @@
 import os
+import json
+import time
 import sqlite3
 from pathlib import Path
 
@@ -11,6 +13,19 @@ from flasgger import Swagger, swag_from
 from gemini_model import GeminiModel
 # optional model for future use
 # from chatgpt_model import ChatGPTModel
+
+# Import LangChain agent (optional, controlled by environment variable)
+USE_LANGCHAIN = os.getenv("USE_LANGCHAIN", "False").lower() == "true"
+langchain_agent = None
+if USE_LANGCHAIN:
+    try:
+        from langchain_agent import LangChainAgent
+        langchain_agent = LangChainAgent()
+        print("LangChain Agent initialized successfully")
+    except Exception as e:
+        print(f"Error initializing LangChain Agent: {e}")
+        print("Falling back to standard RAG approach")
+        USE_LANGCHAIN = False
 
 # Load environment variables
 load_dotenv()
@@ -177,7 +192,8 @@ def check_database():
 @app.route("/", methods=["GET"])
 def index():
     """Provide HTML page for chat interface"""
-    return render_template("index.html")
+    # Pass LangChain status to template
+    return render_template("index.html", use_langchain=USE_LANGCHAIN)
 
 @app.route("/api", methods=["GET"])
 def api_home():
@@ -575,7 +591,7 @@ def search_reviews():
 @swag_from({
     "tags": ["Search"],
     "summary": "Natural language query for reviews",
-    "description": "Query reviews using natural language, parsed by AI API",
+    "description": "Query reviews using natural language, processed by AI API with optional LangChain enhancement",
     "parameters": [
         {
             "name": "body",
@@ -587,6 +603,14 @@ def search_reviews():
                     "query": {
                         "type": "string",
                         "description": "Natural language query"
+                    },
+                    "force_langchain": {
+                        "type": "boolean",
+                        "description": "Force use of LangChain for this query (override environment setting)"
+                    },
+                    "force_standard": {
+                        "type": "boolean",
+                        "description": "Force use of standard RAG for this query (override environment setting)"
                     }
                 },
                 "required": ["query"]
@@ -612,9 +636,33 @@ def query_reviews():
         return jsonify({"error": "Natural language query must be provided"}), 400
 
     user_query = data["query"]
+    
+    # Check if we should use LangChain for this specific query
+    use_langchain_for_query = USE_LANGCHAIN
+    if "force_langchain" in data and data["force_langchain"] is True:
+        use_langchain_for_query = True
+    elif "force_standard" in data and data["force_standard"] is True:
+        use_langchain_for_query = False
+    
+    # Add information about which approach is being used
+    query_metadata = {
+        "query_method": "langchain" if use_langchain_for_query else "standard_rag",
+        "ai_model": AI_MODEL_TYPE,
+        "timestamp": time.time()
+    }
 
     try:
-        # use AI model to parse query
+        # Use LangChain Agent if enabled
+        if use_langchain_for_query and langchain_agent:
+            print(f"Using LangChain Agent for query: {user_query}")
+            response = langchain_agent.process_query(user_query)
+            response["query_metadata"] = query_metadata
+            return jsonify(response)
+            
+        # Otherwise use standard RAG approach
+        print(f"Using standard RAG approach for query: {user_query}")
+        
+        # Use AI model to parse query
         structured_query = ai_model.parse_natural_language_query(user_query)
 
         # Search reviews based on structured query
@@ -651,7 +699,7 @@ def query_reviews():
             params.extend([user, f"%{user}%"])
             
         # Sort and limit results
-        sql_query += " ORDER BY Time DESC LIMIT 50"
+        sql_query += " ORDER BY Time DESC LIMIT 10"
         
         # Execute query
         results = execute_query(sql_query, tuple(params) if params else None)
@@ -660,11 +708,117 @@ def query_reviews():
             "query": user_query,
             "interpreted_as": structured_query,
             "results_count": len(results),
-            "results": results
+            "results": results,
+            "query_metadata": query_metadata
         })
         
     except Exception as e:
         print(f"Query processing error: {e}")
+        return jsonify({
+            "error": str(e),
+            "query_metadata": query_metadata
+        }), 500
+
+@app.route("/api/toggle_langchain", methods=["POST"])
+@swag_from({
+    "tags": ["System"],
+    "summary": "Toggle LangChain mode",
+    "description": "Toggle between standard RAG and LangChain Agent for natural language queries",
+    "parameters": [
+        {
+            "name": "body",
+            "in": "body",
+            "required": True,
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "enable_langchain": {
+                        "type": "boolean",
+                        "description": "Whether to enable LangChain Agent"
+                    }
+                },
+                "required": ["enable_langchain"]
+            }
+        }
+    ],
+    "responses": {
+        "200": {
+            "description": "Successfully updated LangChain mode"
+        },
+        "400": {
+            "description": "Invalid request"
+        },
+        "500": {
+            "description": "Error updating LangChain mode"
+        }
+    }
+})
+def toggle_langchain():
+    """Toggle LangChain mode for natural language queries"""
+    global USE_LANGCHAIN, langchain_agent
+    
+    data = request.get_json()
+    if not data or "enable_langchain" not in data:
+        return jsonify({"error": "enable_langchain parameter must be provided"}), 400
+    
+    try:
+        enable_langchain = data["enable_langchain"]
+        
+        # If enabling LangChain and it's not already initialized
+        if enable_langchain and not langchain_agent:
+            from langchain_agent import LangChainAgent
+            langchain_agent = LangChainAgent()
+        
+        USE_LANGCHAIN = enable_langchain
+        mode = "enabled" if USE_LANGCHAIN else "disabled"
+        
+        print(f"LangChain Agent {mode}")
+        return jsonify({
+            "success": True,
+            "message": f"LangChain Agent {mode}",
+            "langchain_enabled": USE_LANGCHAIN
+        })
+    except Exception as e:
+        print(f"Error toggling LangChain mode: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/system_status", methods=["GET"])
+@swag_from({
+    "tags": ["System"],
+    "summary": "System status",
+    "description": "Get system status including LangChain availability",
+    "responses": {
+        "200": {
+            "description": "Successfully retrieved system status"
+        }
+    }
+})
+def system_status():
+    """Get system status including LangChain availability"""
+    try:
+        # Check database connection
+        db_ok = check_database()
+        
+        return jsonify({
+            "status": "ok" if db_ok and ai_model else "error",
+            "database": {
+                "connected": db_ok,
+                "path": DB_PATH,
+                "exists": os.path.exists(DB_PATH)
+            },
+            "ai_model": {
+                "type": AI_MODEL_TYPE,
+                "initialized": ai_model is not None
+            },
+            "langchain": {
+                "available": langchain_agent is not None,
+                "enabled": USE_LANGCHAIN
+            },
+            "cache": {
+                "size": len(cache["query_cache"]) if "query_cache" in cache else 0
+            }
+        })
+    except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 @app.route("/api/debug", methods=["GET"])
@@ -724,6 +878,7 @@ if __name__ == "__main__":
         exit(1)
 
     print("Initializing Amazon Fine Food Reviews system...")
+    print(f"LangChain Agent: {'Enabled' if USE_LANGCHAIN else 'Disabled'}")
     
     if not os.path.exists(DB_PATH):
         print(f"Warning: Database file not found: {DB_PATH}")

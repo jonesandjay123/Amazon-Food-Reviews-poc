@@ -11,3 +11,10 @@ kaggle==1.5.16
 # azure-identity==1.15.0
 # azure-ai-openai==1.0.0
 # azure-core==1.29.5
+
+# LangChain 相關依賴項
+langchain==0.1.4
+langchain-core==0.1.21
+langchain-community==0.0.19
+langchain-google-genai==0.0.6
+# langchain-openai==0.0.5  # 公司環境使用時取消註解

@@ -17,6 +17,14 @@
         <div class="api-link">
           <a href="/api" title="API Documentation">API Docs</a>
         </div>
+        <div class="langchain-toggle">
+          <label class="switch">
+            <input type="checkbox" id="langchain-toggle" {% if use_langchain %}checked{% endif %}>
+            <span class="slider round"></span>
+          </label>
+          <span id="langchain-status">LangChain: {% if use_langchain %}ON{% else %}OFF{% endif %}</span>
+          <span class="tooltip">💡 LangChain enhances query capabilities with multi-step reasoning</span>
+        </div>
       </div>
 
       <div class="chat-messages" id="chat-messages">
@@ -38,7 +46,7 @@
           <button type="submit" id="send-button">
             <span>Send</span>
           </button>
-          <button type="button" id="clear-button" title="清除訊息">
+          <button type="button" id="clear-button" title="Clear Messages">
             <span>Clear</span>
           </button>
         </form>
