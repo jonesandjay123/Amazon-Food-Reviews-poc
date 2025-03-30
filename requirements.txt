@@ -6,3 +6,8 @@ flasgger==0.9.7.1
 gunicorn==22.0.0
 Werkzeug==3.0.3
 kaggle==1.5.16
+
+# for azure openai
+# azure-identity==1.15.0
+# azure-ai-openai==1.0.0
+# azure-core==1.29.5
