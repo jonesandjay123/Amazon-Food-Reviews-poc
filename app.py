@@ -1,7 +1,7 @@
 # app.py
 import os, time
 from typing import Optional
-from flask import Flask, render_template
+from flask import Flask, render_template, request, jsonify
 from db import execute, DB_PATH
 
 # --- Gemini (optional) -------------------------------------------------
