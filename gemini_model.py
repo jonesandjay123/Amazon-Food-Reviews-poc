@@ -1,4 +1,4 @@
-# gemini_model.py  （最小可跑版本）
+# gemini_model.py 
 import os
 import json
 import google.generativeai as genai
@@ -13,21 +13,20 @@ class GeminiModel:
         genai.configure(api_key=api_key)
         self.model = genai.GenerativeModel(MODEL_NAME)
 
-    def parse_natural_language_query(self, user_query: str) -> dict:
+    def parse(self, query: str) -> dict:
+        """Parse the natural language query into {category, keyword}"""
         prompt = (
-            "Extract the following JSON fields from the query if present:\n"
-            "keyword, category (business/entertainment/politics/sport/tech)\n\n"
-            f"Query: {user_query}"
+            "Extract these JSON fields from the query if present:\n"
+            "category (business|entertainment|politics|sport|tech), "
+            "keyword (string)\n\n"
+            f"Query: {query}"
         )
-
-        response = self.model.generate_content(
+        res = self.model.generate_content(
             prompt,
-            generation_config=genai.GenerationConfig(
-                response_mime_type="application/json"
-            ),
+            generation_config=genai.GenerationConfig(response_mime_type="application/json"),
         )
-
         try:
-            return json.loads(response.text)
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Gemini did not return valid JSON: {e}\n{response.text}")
+            return json.loads(res.text)
+        except json.JSONDecodeError:
+            # If the LLM returns a random string, return {} to fall back
+            return {}

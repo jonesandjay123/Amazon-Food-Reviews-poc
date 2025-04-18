@@ -1,91 +1,35 @@
-import os
-import sqlite3
-import time
+# db.py
+import os, sqlite3, time
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Tuple
 
-# Set database path
-DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
-DB_PATH = os.path.join(DATA_DIR, "bbc_news.sqlite")
+DATA_DIR = Path(__file__).parent / "data"
+DB_PATH  = DATA_DIR / "bbc_news.sqlite"
 
-# Ensure data directory exists
-os.makedirs(DATA_DIR, exist_ok=True)
+_CACHE_TTL = 30          # Cache expiration time in seconds
+_cache: dict[str, tuple[float, List[Dict[str, Any]]]] = {}
 
-# Query result cache
-cache = {
-    "query_cache": {},  # Query result cache
-    "last_load_time": 0  # Timestamp of last data load
-}
-
-def get_db_connection():
-    """Establish and return a SQLite database connection"""
-    if not os.path.exists(DB_PATH):
-        raise FileNotFoundError(f"Database file not found: {DB_PATH}. Please download CSV file manually and run scripts/csv_to_sqlite.py to convert data first.")
-    
+def _connect() -> sqlite3.Connection:
+    if not DB_PATH.exists():
+        raise FileNotFoundError(f"{DB_PATH} not found ‑ convert CSV first")
     conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row  # Return results as dictionaries
+    conn.row_factory = sqlite3.Row
     return conn
 
-def execute_query(query: str, params: tuple = None, cache_key: str = None) -> List[Dict[str, Any]]:
-    """Execute SQLite query, supporting result caching"""
-    # If a cache key is provided and the query result is already cached, return cached result
-    if cache_key and cache_key in cache["query_cache"]:
-        print(f"Using cached result: {cache_key}")
-        return cache["query_cache"][cache_key]
-    
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        if params:
-            cursor.execute(query, params)
-        else:
-            cursor.execute(query)
-            
-        results = [dict(row) for row in cursor.fetchall()]
-        conn.close()
-        
-        # Cache result (if cache key is provided)
-        if cache_key:
-            cache["query_cache"][cache_key] = results
-            
-        return results
-    except Exception as e:
-        print(f"Error executing query: {e}")
-        if 'conn' in locals() and conn:
-            conn.close()
-        raise e
+def _cached(key: str) -> List[Dict[str, Any]] | None:
+    if key in _cache:
+        ts, data = _cache[key]
+        if time.time() - ts < _CACHE_TTL:
+            return data
+    return None
 
-def check_database() -> bool:
-    """Check database structure and display basic information"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Get table list
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
-        tables = cursor.fetchall()
-        
-        print("Database table structure:")
-        for table in tables:
-            table_name = table['name']
-            print(f"- {table_name}")
-            
-            # Get table column information
-            cursor.execute(f"PRAGMA table_info({table_name});")
-            columns = cursor.fetchall()
-            for col in columns:
-                print(f"  - {col['name']} ({col['type']})")
-                
-            # Get record count
-            cursor.execute(f"SELECT COUNT(*) as count FROM {table_name};")
-            count = cursor.fetchone()['count']
-            print(f"  - Record count: {count}")
-        
-        conn.close()
-        return True
-    except Exception as e:
-        print(f"Error checking database: {e}")
-        if 'conn' in locals() and conn:
-            conn.close()
-        return False 
+def execute(sql: str, params: Tuple = ()) -> List[Dict[str, Any]]:
+    key = f"{sql}|{params}"
+    if (data := _cached(key)) is not None:
+        return data
+
+    with _connect() as conn:
+        rows = conn.execute(sql, params).fetchall()
+    data = [dict(r) for r in rows]
+    _cache[key] = (time.time(), data)
+    return data
