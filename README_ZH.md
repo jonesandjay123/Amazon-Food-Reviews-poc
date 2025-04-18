@@ -29,6 +29,7 @@ bbc-news-api/
 ├── app.py              # Flask 主應用入口點
 ├── routes.py           # API 路由處理邏輯
 ├── db.py               # 數據庫連接和查詢模塊
+├── chatgpt_model.py    # ChatGPT 模型整合(保留使用)
 ├── gemini_model.py     # Gemini AI 模型整合
 ├── requirements.txt    # 依賴套件列表
 ├── .env                # 環境變數配置文件

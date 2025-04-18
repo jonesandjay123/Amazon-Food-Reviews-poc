@@ -4,33 +4,33 @@ import time
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 
-# 設定資料庫路徑
+# Set database path
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 DB_PATH = os.path.join(DATA_DIR, "bbc_news.sqlite")
 
-# 確保資料目錄存在
+# Ensure data directory exists
 os.makedirs(DATA_DIR, exist_ok=True)
 
-# 查詢結果快取
+# Query result cache
 cache = {
-    "query_cache": {},  # 查詢結果快取
-    "last_load_time": 0  # 最後一次加載資料的時間戳
+    "query_cache": {},  # Query result cache
+    "last_load_time": 0  # Timestamp of last data load
 }
 
 def get_db_connection():
-    """建立並回傳一個 SQLite 資料庫連線"""
+    """Establish and return a SQLite database connection"""
     if not os.path.exists(DB_PATH):
-        raise FileNotFoundError(f"找不到資料庫檔案：{DB_PATH}。請先執行 scripts/download_data.sh 下載並轉換資料。")
+        raise FileNotFoundError(f"Database file not found: {DB_PATH}. Please run scripts/download_data.sh to download and convert data first.")
     
     conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row  # 以字典形式回傳結果
+    conn.row_factory = sqlite3.Row  # Return results as dictionaries
     return conn
 
 def execute_query(query: str, params: tuple = None, cache_key: str = None) -> List[Dict[str, Any]]:
-    """執行 SQLite 查詢，支援快取結果"""
-    # 如果提供了快取鍵且查詢結果已被快取，則回傳快取結果
+    """Execute SQLite query, supporting result caching"""
+    # If a cache key is provided and the query result is already cached, return cached result
     if cache_key and cache_key in cache["query_cache"]:
-        print(f"使用快取結果：{cache_key}")
+        print(f"Using cached result: {cache_key}")
         return cache["query_cache"][cache_key]
     
     try:
@@ -45,47 +45,47 @@ def execute_query(query: str, params: tuple = None, cache_key: str = None) -> Li
         results = [dict(row) for row in cursor.fetchall()]
         conn.close()
         
-        # 快取結果（如果提供了快取鍵）
+        # Cache result (if cache key is provided)
         if cache_key:
             cache["query_cache"][cache_key] = results
             
         return results
     except Exception as e:
-        print(f"執行查詢時發生錯誤：{e}")
+        print(f"Error executing query: {e}")
         if 'conn' in locals() and conn:
             conn.close()
         raise e
 
 def check_database() -> bool:
-    """檢查資料庫結構並顯示基本資訊"""
+    """Check database structure and display basic information"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # 獲取表格列表
+        # Get table list
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
         tables = cursor.fetchall()
         
-        print("資料庫表格結構：")
+        print("Database table structure:")
         for table in tables:
             table_name = table['name']
             print(f"- {table_name}")
             
-            # 獲取表格的欄位資訊
+            # Get table column information
             cursor.execute(f"PRAGMA table_info({table_name});")
             columns = cursor.fetchall()
             for col in columns:
                 print(f"  - {col['name']} ({col['type']})")
                 
-            # 獲取記錄數量
+            # Get record count
             cursor.execute(f"SELECT COUNT(*) as count FROM {table_name};")
             count = cursor.fetchone()['count']
-            print(f"  - 記錄數量：{count}")
+            print(f"  - Record count: {count}")
         
         conn.close()
         return True
     except Exception as e:
-        print(f"檢查資料庫時發生錯誤：{e}")
+        print(f"Error checking database: {e}")
         if 'conn' in locals() and conn:
             conn.close()
         return False 

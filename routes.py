@@ -1,50 +1,50 @@
 from flask import Blueprint, jsonify, request
 from db import execute_query
 
-# 創建藍圖
+# Create blueprint
 api = Blueprint('api', __name__)
 
 @api.route("/news", methods=["GET"])
 def get_news():
-    """取得新聞列表，支援分頁和類別過濾"""
+    """Get news list, supporting pagination and category filtering"""
     page = int(request.args.get("page", 1))
     limit = int(request.args.get("limit", 20))
     category = request.args.get("category")
     keyword = request.args.get("keyword")
     
-    # 計算分頁 offset
+    # Calculate pagination offset
     offset = (page - 1) * limit
     
-    # 建構查詢
+    # Construct query
     sql_query = "SELECT * FROM news WHERE 1=1"
     params = []
     
-    # 添加分類過濾
+    # Add category filter
     if category:
         sql_query += " AND category = ?"
         params.append(category)
     
-    # 添加關鍵字過濾
+    # Add keyword filter
     if keyword:
         sql_query += " AND (title LIKE ? OR text LIKE ?)"
         keyword_param = f"%{keyword}%"
         params.append(keyword_param)
         params.append(keyword_param)
     
-    # 計算總記錄數
+    # Calculate total record count
     count_query = sql_query.replace("SELECT *", "SELECT COUNT(*) as count")
     count_result = execute_query(count_query, tuple(params) if params else None)
     total_count = count_result[0]["count"] if count_result else 0
     
-    # 添加分頁限制
+    # Add pagination limits
     sql_query += " LIMIT ? OFFSET ?"
     params.append(limit)
     params.append(offset)
     
-    # 執行查詢
+    # Execute query
     results = execute_query(sql_query, tuple(params) if params else None)
     
-    # 計算總頁數
+    # Calculate total pages
     total_pages = (total_count + limit - 1) // limit
     
     return jsonify({
@@ -57,43 +57,43 @@ def get_news():
 
 @api.route("/news/<int:news_id>", methods=["GET"])
 def get_news_detail(news_id):
-    """根據 ID 取得新聞詳情"""
+    """Get news details by ID"""
     result = execute_query("SELECT * FROM news WHERE id = ?", (news_id,))
     
     if result:
         return jsonify(result[0])
     else:
-        return jsonify({"error": "找不到指定的新聞"}), 404
+        return jsonify({"error": "News not found"}), 404
 
 @api.route("/search", methods=["GET"])
 def search_news():
-    """搜尋新聞（基本文字搜尋）"""
+    """Search news (basic text search)"""
     q = request.args.get("q")
     page = int(request.args.get("page", 1))
     limit = int(request.args.get("limit", 20))
     
     if not q:
-        return jsonify({"error": "搜尋關鍵字不能為空"}), 400
+        return jsonify({"error": "Search keyword cannot be empty"}), 400
     
     offset = (page - 1) * limit
     
-    # 建構查詢（標題和內文中搜尋）
+    # Construct query (search in title and content)
     sql_query = "SELECT * FROM news WHERE title LIKE ? OR text LIKE ?"
     params = (f"%{q}%", f"%{q}%")
     
-    # 計算總記錄數
+    # Calculate total record count
     count_query = sql_query.replace("SELECT *", "SELECT COUNT(*) as count")
     count_result = execute_query(count_query, params)
     total_count = count_result[0]["count"] if count_result else 0
     
-    # 添加分頁限制
+    # Add pagination limits
     sql_query += " LIMIT ? OFFSET ?"
     params = params + (limit, offset)
     
-    # 執行查詢
+    # Execute query
     results = execute_query(sql_query, params)
     
-    # 計算總頁數
+    # Calculate total pages
     total_pages = (total_count + limit - 1) // limit
     
     return jsonify({
@@ -107,21 +107,21 @@ def search_news():
 
 @api.route("/query", methods=["POST"])
 def query_news():
-    """自然語言查詢新聞（使用 Gemini API）"""
+    """Natural language query for news (using Gemini API)"""
     data = request.get_json()
     
     if not data or "query" not in data:
-        return jsonify({"error": "查詢不能為空"}), 400
+        return jsonify({"error": "Query cannot be empty"}), 400
     
     user_query = data["query"]
     
-    # 這裡可以連接 Gemini API 解析查詢
-    # 簡化版，直接解析常見的類別和關鍵字
+    # Can connect to Gemini API to parse query here
+    # Simplified version: directly parse common categories and keywords
     
-    # 簡單解析邏輯
+    # Simple parsing logic
     parsed_data = parse_natural_language_query(user_query)
     
-    # 建構查詢
+    # Construct query
     sql_query = "SELECT * FROM news WHERE 1=1"
     params = []
     
@@ -135,10 +135,10 @@ def query_news():
         params.append(keyword_param)
         params.append(keyword_param)
     
-    # 添加限制
+    # Add limit
     sql_query += " LIMIT 10"
     
-    # 執行查詢
+    # Execute query
     results = execute_query(sql_query, tuple(params) if params else None)
     
     return jsonify({
@@ -149,7 +149,7 @@ def query_news():
 
 @api.route("/system_status", methods=["GET"])
 def system_status():
-    """取得系統狀態"""
+    """Get system status"""
     from db import check_database
     
     db_status = check_database()
@@ -162,7 +162,7 @@ def system_status():
 
 @api.route("/debug", methods=["GET"])
 def debug():
-    """除錯資訊"""
+    """Debug information"""
     from db import cache
     
     return jsonify({
@@ -172,35 +172,35 @@ def debug():
     })
 
 def parse_natural_language_query(query):
-    """解析自然語言查詢，提取類別和關鍵字"""
+    """Parse natural language query, extract category and keywords"""
     result = {"keyword": None, "category": None}
     
-    # 轉小寫進行比對
+    # Convert to lowercase for matching
     query_lower = query.lower()
     
-    # 檢查類別 (5 個類別：business、entertainment、politics、sport、tech)
+    # Check category (5 categories: business, entertainment, politics, sport, tech)
     categories = ["business", "entertainment", "politics", "sport", "tech"]
     for category in categories:
         if category in query_lower:
             result["category"] = category
             break
     
-    # 提取關鍵字 (簡化版)
-    # 可以根據常見的關鍵詞模式提取
+    # Extract keywords (simplified version)
+    # Can extract based on common keyword patterns
     keywords = ["about", "related to", "concerning", "on"]
     for keyword in keywords:
         if keyword in query_lower:
             parts = query_lower.split(keyword, 1)
             if len(parts) > 1 and parts[1].strip():
-                # 取最後一個關鍵詞後的文字作為搜尋詞
+                # Take text after the last keyword as search term
                 result["keyword"] = parts[1].strip()
-                # 移除任何尾隨標點符號
+                # Remove any trailing punctuation
                 result["keyword"] = result["keyword"].rstrip(".,;:?!")
                 break
     
-    # 如果上述方法未找到關鍵字，使用一些啟發式規則
+    # If above methods do not find keywords, use some heuristic rules
     if not result["keyword"]:
-        # 排除類別詞和常見動詞後，取最長的詞作為關鍵字
+        # Remove category words and common verbs, take the longest word as keyword
         exclude_words = categories + ["list", "show", "find", "get", "latest", "news"]
         words = [w for w in query_lower.split() if w not in exclude_words and len(w) > 3]
         if words:

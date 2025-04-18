@@ -1,237 +1,238 @@
 # BBC News Mini Corpus API
 
-一個基於 BBC News Dataset 的 RESTful API，支持各類別的新聞查詢和自然語言查詢處理系統。
+A RESTful API based on the BBC News Dataset, supporting various category news queries and natural language query processing.
 
-## 主要特點
+## Key Features
 
-- 📰 使用 SQLite 資料庫存取 BBC News 文章數據
-- 🔍 高效的查詢緩存機制，提升查詢速度
-- 💬 支持自然語言查詢處理（使用Gemini AI模型）
-- 🗄️ 簡潔、模塊化的代碼結構
-- 🚀 輕量級設計，易於擴展
-- 🌐 提供網頁界面進行直觀查詢
+- 📰 Access BBC News article data using SQLite database
+- 🔍 Efficient query caching mechanism to improve query speed
+- 💬 Support for natural language query processing (using Gemini AI model)
+- 🗄️ Concise, modular code structure
+- 🚀 Lightweight design, easy to extend
+- 🌐 Provides web interface for intuitive querying
 
-## 資料集資訊
+## Dataset Information
 
-本項目使用 BBC News Dataset，包含五個主要類別的新聞文章：
-- **business**: 商業新聞
-- **entertainment**: 娛樂新聞
-- **politics**: 政治新聞
-- **sport**: 體育新聞
-- **tech**: 科技新聞
+This project uses the BBC News Dataset, which includes news articles in five main categories:
+- **business**: Business news
+- **entertainment**: Entertainment news
+- **politics**: Political news
+- **sport**: Sports news
+- **tech**: Technology news
 
-數據來源：`https://storage.googleapis.com/ztm_tf_course/bbc-text.csv`
+Data source: `https://storage.googleapis.com/ztm_tf_course/bbc-text.csv`
 
-## 專案架構圖
+## Project Structure Diagram
 
 ```
 bbc-news-api/
-├── app.py              # Flask 主應用入口點
-├── routes.py           # API 路由處理邏輯
-├── db.py               # 數據庫連接和查詢模塊
-├── gemini_model.py     # Gemini AI 模型整合
-├── requirements.txt    # 依賴套件列表
-├── .env                # 環境變數配置文件
-├── template.env        # 環境變數範本
-├── download_data.sh    # 數據下載腳本
-├── README.md           # 英文說明文件
-├── README_ZH.md        # 中文說明文件
+├── app.py              # Flask main application entry point
+├── routes.py           # API route handling logic
+├── db.py               # Database connection and query module
+├── chatgpt_model.py    # ChatGPT model integration(reserved use)
+├── gemini_model.py     # Gemini AI model integration
+├── requirements.txt    # Dependency package list
+├── .env                # Environment variable configuration file
+├── template.env        # Environment variable template
+├── download_data.sh    # Data download script
+├── README.md           # English documentation
+├── README_ZH.md        # Chinese documentation
 │
-├── scripts/            # 輔助腳本
-│   ├── download_data.sh    # 下載數據腳本
-│   └── csv_to_sqlite.py    # 轉換 CSV 到 SQLite
+├── scripts/            # Helper scripts
+│   ├── download_data.sh    # Data download script
+│   └── csv_to_sqlite.py    # Convert CSV to SQLite
 │
-├── static/             # 靜態資源
+├── static/             # Static resources
 │   ├── css/
-│   │   └── style.css       # 樣式表
+│   │   └── style.css       # Stylesheet
 │   └── js/
-│       └── script.js       # 前端交互脚本
+│       └── script.js       # Frontend interaction script
 │
-├── templates/          # HTML 模板
-│   ├── index.html          # 主頁面/聊天界面
-│   └── api.html            # API 文檔頁面
+├── templates/          # HTML templates
+│   ├── index.html          # Main page/chat interface
+│   └── api.html            # API documentation page
 │
-└── data/               # 數據文件夾 (自動創建)
-    ├── bbc-news.csv        # 原始 CSV 數據
-    └── bbc_news.sqlite     # SQLite 數據庫
+└── data/               # Data folder (auto-created)
+    ├── bbc-news.csv        # Original CSV data
+    └── bbc_news.sqlite     # SQLite database
 ```
 
-## 系統流程圖
+## System Flow Diagram
 
 ```
-用户請求 → Flask 應用 (app.py)
+User Request → Flask Application (app.py)
     ↓
-路由處理 (routes.py) → 數據庫查詢 (db.py) → SQLite 數據庫
-    ↓                     ↑
-自然語言解析 ← Gemini AI 模型 (gemini_model.py)
+Route Handling (routes.py) → Database Query (db.py) → SQLite Database
+    ↓                           ↑
+Natural Language Parsing ← Gemini AI Model (gemini_model.py)
     ↓
-JSON 響應 → 前端顯示
+JSON Response → Frontend Display
 ```
 
-## 環境設置
+## Environment Setup
 
-### 前置條件
+### Prerequisites
 
 - Python 3.8+
-- 網絡連接（用於下載數據集）
-- Gemini API Key（可選，用於自然語言查詢功能）
+- Internet connection (for downloading the dataset)
+- Gemini API Key (optional, for natural language query functionality)
 
-### 安裝步驟
+### Installation Steps
 
-1. **克隆本倉庫**：
+1. **Clone this repository**:
 
    ```bash
    git clone <repository-url>
    cd bbc-news-api
    ```
 
-2. **建立並啟用虛擬環境**：
+2. **Create and activate a virtual environment**:
 
    ```bash
    python -m venv venv
-   source venv/bin/activate  # 在 Windows 上使用 venv\Scripts\activate
+   source venv/bin/activate  # On Windows use venv\Scripts\activate
    ```
 
-3. **安裝依賴**：
+3. **Install dependencies**:
 
    ```bash
    pip install -r requirements.txt
    ```
 
-4. **配置環境變數**：
+4. **Configure environment variables**:
 
-   將 `template.env` 複製為 `.env` 並設定你的 Gemini API Key（如果需要自然語言查詢功能）：
+   Copy `template.env` to `.env` and set your Gemini API Key (if you need natural language query functionality):
 
    ```bash
    cp template.env .env
-   # 然後編輯 .env 文件添加你的 API 密鑰
+   # Then edit the .env file to add your API key
    ```
 
-5. **下載數據並創建 SQLite 數據庫**：
+5. **Download data and create SQLite database**:
 
    ```bash
    chmod +x scripts/download_data.sh
    ./scripts/download_data.sh
    ```
 
-## 運行應用
+## Running the Application
 
-啟動 Flask 應用：
+Start the Flask application:
 
 ```bash
 python app.py
 ```
 
-應用會在 http://localhost:5000 運行。
+The application will run at http://localhost:5000.
 
-## 使用自然語言查詢
+## Using Natural Language Queries
 
-本系統支持使用自然語言查詢 BBC 新聞文章。這些功能可以通過聊天界面 (http://localhost:5000/) 或 API 端點使用。
+This system supports using natural language to query BBC news articles. These features can be accessed through the chat interface (http://localhost:5000/) or API endpoints.
 
-### 可用的自然語言查詢示例：
+### Available Natural Language Query Examples:
 
-1. **基於類別查詢**：
-   - "尋找商業新聞"
-   - "顯示最新的政治報導"
+1. **Category-based queries**:
+   - "Find business news"
+   - "Show the latest political reports"
 
-2. **基於關鍵詞查詢**：
-   - "查找有關蘋果公司的科技新聞"
-   - "找出提到足球的體育新聞"
+2. **Keyword-based queries**:
+   - "Find tech news about Apple"
+   - "Find sports news that mention football"
 
-3. **綜合查詢**：
-   - "尋找討論市場的商業新聞"
-   - "有哪些關於電影的娛樂新聞？"
+3. **Combined queries**:
+   - "Find business news discussing markets"
+   - "What entertainment news is there about movies?"
 
-## 測試 API
+## Testing the API
 
-可以通過以下方式測試 API：
+You can test the API in the following ways:
 
-### 使用瀏覽器
+### Using a Browser
 
-訪問聊天界面：http://localhost:5000/
+Visit the chat interface: http://localhost:5000/
 
-### 使用 curl
+### Using curl
 
-1. **測試自然語言查詢**：
+1. **Test natural language queries**:
 
    ```bash
    curl -X POST http://localhost:5000/api/query \
      -H "Content-Type: application/json" \
-     -d '{"query":"尋找科技類別中關於蘋果的新聞"}'
+     -d '{"query":"Find tech news about Apple"}'
    ```
 
-2. **獲取新聞列表**：
+2. **Get news list**:
 
    ```bash
    curl http://localhost:5000/api/news?category=tech&limit=10
    ```
 
-3. **獲取特定新聞詳情**：
+3. **Get specific news details**:
 
    ```bash
    curl http://localhost:5000/api/news/1
    ```
 
-4. **搜索新聞**：
+4. **Search news**:
 
    ```bash
    curl http://localhost:5000/api/search?q=market
    ```
 
-5. **檢查系統狀態**：
+5. **Check system status**:
    ```bash
    curl http://localhost:5000/api/system_status
    ```
 
-## API 端點列表
+## API Endpoint List
 
-### 新聞查詢
+### News Queries
 
-- `GET /api/news` - 獲取新聞列表（支持分頁和類別過濾）
-  - 參數: `page`, `limit`, `category`, `keyword`
-- `GET /api/news/{news_id}` - 獲取特定新聞詳情
+- `GET /api/news` - Get news list (supports pagination and category filtering)
+  - Parameters: `page`, `limit`, `category`, `keyword`
+- `GET /api/news/{news_id}` - Get specific news details
 
-### 搜索
+### Search
 
-- `GET /api/search?q={query}` - 基本文字搜索
-  - 參數: `q`, `page`, `limit`
-- `POST /api/query` - 自然語言查詢
-  - 請求體: `{"query": "自然語言查詢文本"}`
+- `GET /api/search?q={query}` - Basic text search
+  - Parameters: `q`, `page`, `limit`
+- `POST /api/query` - Natural language query
+  - Request body: `{"query": "natural language query text"}`
 
-### 系統
+### System
 
-- `GET /api/debug` - 除錯信息
-- `GET /api/system_status` - 獲取系統狀態
+- `GET /api/debug` - Debug information
+- `GET /api/system_status` - Get system status
 
-## 主要模塊功能
+## Main Module Functions
 
-- **app.py**: Flask 應用入口點，初始化服務和路由
-- **routes.py**: 處理所有 API 路由和請求邏輯
-- **db.py**: 數據庫連接和查詢處理，包含緩存機制
-- **gemini_model.py**: 與 Gemini AI 模型整合，處理自然語言查詢解析
+- **app.py**: Flask application entry point, initializes services and routes
+- **routes.py**: Handles all API routes and request logic
+- **db.py**: Database connection and query processing, includes caching mechanism
+- **gemini_model.py**: Integration with Gemini AI model, processes natural language query parsing
 
-## 擴展建議
+## Extension Suggestions
 
-1. 添加更多 NLP 功能，如文章摘要或情感分析
-2. 實現更高級的搜索功能，如相似度搜索
-3. 添加用戶認證和授權
-4. 增加對更多新聞源的支持
-5. 添加定期數據更新機制
+1. Add more NLP features, such as article summaries or sentiment analysis
+2. Implement more advanced search features, such as similarity search
+3. Add user authentication and authorization
+4. Add support for more news sources
+5. Add periodic data update mechanism
 
-## 故障排除
+## Troubleshooting
 
-1. **數據庫文件不存在**：
-   - 執行 `./scripts/download_data.sh` 確保已下載並轉換數據
-   - 確認 `data/bbc_news.sqlite` 文件存在
+1. **Database file does not exist**:
+   - Run `./scripts/download_data.sh` to ensure data has been downloaded and converted
+   - Confirm that the `data/bbc_news.sqlite` file exists
 
-2. **自然語言查詢功能不可用**：
-   - 確認 `.env` 文件存在並包含有效的 `GEMINI_API_KEY`
-   - 檢查 API 密鑰限制和網絡連接
+2. **Natural language query functionality is unavailable**:
+   - Confirm that the `.env` file exists and contains a valid `GEMINI_API_KEY`
+   - Check API key limitations and network connectivity
 
-3. **應用啟動錯誤**：
-   - 檢查所有依賴是否已正確安裝
-   - 查看日誌以獲取詳細錯誤信息
+3. **Application startup error**:
+   - Check that all dependencies are correctly installed
+   - View logs for detailed error information
    
-4. **查詢返回空結果**：
-   - 確認數據庫已正確創建且包含數據
-   - 使用 `api/system_status` 端點檢查系統狀態
+4. **Query returns empty results**:
+   - Confirm that the database has been correctly created and contains data
+   - Use the `api/system_status` endpoint to check system status
