@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Amazon Food Reviews System</title>
+    <title>BBC News Mini Corpus</title>
     <link
       rel="stylesheet"
       href="{{ url_for('static', filename='css/style.css') }}"
@@ -12,25 +12,14 @@
   <body>
     <div class="chat-container">
       <div class="chat-header">
-        <h1>Amazon Food Review Query System</h1>
-        <p>Use natural language to ask questions about food reviews</p>
-        <div class="api-link">
-          <a href="/api" title="API Documentation">API Docs</a>
-        </div>
-        <div class="langchain-toggle">
-          <label class="switch">
-            <input type="checkbox" id="langchain-toggle" {% if use_langchain %}checked{% endif %}>
-            <span class="slider round"></span>
-          </label>
-          <span id="langchain-status">LangChain: {% if use_langchain %}ON{% else %}OFF{% endif %}</span>
-          <span class="tooltip">💡 LangChain enhances query capabilities with multi-step reasoning</span>
-        </div>
+        <h1>BBC News Mini Corpus Query System</h1>
+        <p>Use natural language to ask questions about BBC news articles</p>
       </div>
 
       <div class="chat-messages" id="chat-messages">
         <div class="system-message">
           <p>
-            Welcome to the Amazon Food Review Query System! Please enter your question, for example: "Find 5-star chocolate reviews" or "Search for food reviews containing the keyword delicious"
+            Welcome to the BBC News Query System! Please enter your question, for example: "Find business news about markets" or "Search for tech articles about Apple"
           </p>
         </div>
       </div>

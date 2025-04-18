@@ -1,395 +1,181 @@
-# Amazon Fine Food Reviews API
+# BBC News Mini Corpus API
 
-A RESTful API based on the Kaggle Amazon Fine Food Reviews dataset, supporting food review queries and natural language queries using the Gemini API.
+一個基於 BBC News Dataset 的 RESTful API，支持各類別的新聞查詢和自然語言查詢。
 
-## Key Features
+## 主要特點
 
-- 🍕 Access Amazon food review data using SQLite database
-- 🔍 Efficient query caching mechanism for improved query speed
-- 💬 Google Gemini API integration for natural language processing
-- 📚 Complete Swagger API documentation
-- 🧠 Intelligent review search and analysis
-- 🔗 LangChain agent enhanced complex queries and multi-step analysis
+- 📰 使用 SQLite 資料庫存取 BBC News 文章數據
+- 🔍 高效的查詢緩存機制，提升查詢速度
+- 💬 支持自然語言查詢處理
+- 🗄️ 簡潔、模塊化的代碼結構
+- 🚀 輕量級設計，易於擴展
 
-## Environment Setup
+## 資料集資訊
 
-### Prerequisites
+本項目使用 BBC News Dataset，包含五個主要類別的新聞文章：
+- **business**: 商業新聞
+- **entertainment**: 娛樂新聞
+- **politics**: 政治新聞
+- **sport**: 體育新聞
+- **tech**: 科技新聞
 
-- Python 3.9+
-- Kaggle account and API key
-- Google Gemini API key
+數據來源：`https://storage.googleapis.com/ztm_tf_course/bbc-text.csv`
 
-### Installation Steps
+## 環境設置
 
-1. **Clone this repository**:
+### 前置條件
+
+- Python 3.8+
+- 網絡連接（用於下載數據集）
+
+### 安裝步驟
+
+1. **克隆本倉庫**：
 
    ```bash
    git clone <repository-url>
-   cd food-reviews-api
+   cd bbc-news-api
    ```
 
-2. **Create and activate virtual environment**:
+2. **建立並啟用虛擬環境**：
 
    ```bash
    python -m venv venv
-   source venv/bin/activate  # On Windows, use venv\Scripts\activate
+   source venv/bin/activate  # 在 Windows 上使用 venv\Scripts\activate
    ```
 
-3. **Install dependencies**:
+3. **安裝依賴**：
 
    ```bash
    pip install -r requirements.txt
    ```
 
-4. **Set up environment variables**:
-   Create a `.env` file and add the following:
+4. **下載數據並創建 SQLite 數據庫**：
+
+   ```bash
+   chmod +x scripts/download_data.sh
+   ./scripts/download_data.sh
    ```
-   GEMINI_API_KEY=your_gemini_api_key_here
-   USE_LANGCHAIN=true  # Optional, set to enable LangChain by default
-   ```
 
-### Kaggle API Setup
+## 運行應用
 
-1. **Get Kaggle API key**:
-   - Kaggle API keys are typically stored in the `~/.kaggle/kaggle.json` file
-   - If not yet set up, log in to [Kaggle](https://www.kaggle.com/), click on your profile picture in the top right > Account > API > Create New API Token
-
-### Download Data
-
-#### Option 1: Using the provided script (recommended)
-Run the following commands to download and extract the Amazon Fine Food Reviews dataset:
-
-```bash
-chmod +x download_data.sh
-./download_data.sh
-```
-
-This will download the database file and extract it to the `data` directory.
-
-#### Option 2: Manual download
-If you cannot use Kaggle CLI or encounter issues, you can manually download the data:
-
-1. Manually download the dataset from Kaggle: [Amazon Fine Food Reviews](https://www.kaggle.com/datasets/snap/amazon-fine-food-reviews)
-2. Extract the downloaded file to get the `database.sqlite` file
-3. Create a `data` directory in your project root if it doesn't exist
-4. Place the `database.sqlite` file in the `data` directory
-
-## Running the Application
-
-Start the Flask application:
+啟動 Flask 應用：
 
 ```bash
 python app.py
 ```
 
-The application will run at http://localhost:5000.
+應用會在 http://localhost:5000 運行。
 
-## Using Gemini API Natural Language Queries
+## 使用自然語言查詢
 
-This system integrates Google Gemini API to query food review data using natural language. These features can be accessed through the chat interface (http://localhost:5000/) or the API endpoint.
+本系統支持使用自然語言查詢 BBC 新聞文章。這些功能可以通過聊天界面 (http://localhost:5000/) 或 API 端點使用。
 
-### Sample Natural Language Queries:
+### 可用的自然語言查詢示例：
 
-1. **Keyword-based searches**:
-   - "Find reviews about chocolate"
-   - "Show reviews containing 'delicious'"
+1. **基於類別查詢**：
+   - "尋找商業新聞"
+   - "顯示最新的政治報導"
 
-2. **Rating-based filtering**:
-   - "Find 5-star chocolate reviews"
-   - "Show food reviews with ratings higher than 3 stars"
+2. **基於關鍵詞查詢**：
+   - "查找有關蘋果公司的科技新聞"
+   - "找出提到足球的體育新聞"
 
-3. **Specific product queries**:
-   - "Find all reviews for product ID B001E4KFG0"
-   - "What positive reviews did this product B000LQOCH0 receive?"
+3. **綜合查詢**：
+   - "尋找討論市場的商業新聞"
+   - "有哪些關於電影的娛樂新聞？"
 
-4. **User review analysis**:
-   - "Show all reviews by user A1RSDE90N6RSZF"
-   - "Which users gave the most 5-star ratings?"
+## 測試 API
 
-5. **Sentiment analysis**:
-   - "Find the most positive reviews for chocolate"
-   - "What negative reviews are there for this product B005IGVBPK?"
+可以通過以下方式測試 API：
 
-6. **Combined queries**:
-   - "Find 5-star chocolate reviews from 2010"
-   - "Show 1-star reviews that contain 'disappointed'"
+### 使用瀏覽器
 
-### How Gemini API Works:
+訪問聊天界面：http://localhost:5000/
 
-The system sends your natural language query to the Gemini API, which parses the query and extracts key parameters:
-- Keywords (keyword)
-- Rating range (min_score, max_score)
-- Product identifiers (product)
-- User identifiers (user)
-- Sentiment orientation (sentiment)
+### 使用 curl
 
-Then, the system uses these parameters to construct SQL queries to retrieve relevant reviews from the database.
-
-## Testing the API
-
-You can test the API in several ways:
-
-### Using a Browser
-
-1. Access the API documentation: http://localhost:5000/api/docs/
-2. Use the chat interface: http://localhost:5000/
-
-### Using curl
-
-1. **Test natural language queries**:
+1. **測試自然語言查詢**：
 
    ```bash
    curl -X POST http://localhost:5000/api/query \
      -H "Content-Type: application/json" \
-     -d '{"query":"Find 5-star reviews for chocolate"}'
+     -d '{"query":"尋找科技類別中關於蘋果的新聞"}'
    ```
 
-2. **Using LangChain for natural language queries**:
-   
-   ```bash
-   curl -X POST http://localhost:5000/api/query \
-     -H "Content-Type: application/json" \
-     -d '{"query":"Find products with polarized reviews for chocolate", "force_langchain": true}'
-   ```
-
-3. **Get review list**:
+2. **獲取新聞列表**：
 
    ```bash
-   curl http://localhost:5000/api/reviews?limit=10&min_score=5
+   curl http://localhost:5000/api/news?category=tech&limit=10
    ```
 
-4. **Get reviews for a specific product**:
+3. **獲取特定新聞詳情**：
 
    ```bash
-   curl http://localhost:5000/api/product/B001E4KFG0
+   curl http://localhost:5000/api/news/1
    ```
 
-5. **Search reviews**:
+4. **搜索新聞**：
 
    ```bash
-   curl http://localhost:5000/api/search?q=delicious
+   curl http://localhost:5000/api/search?q=market
    ```
 
-6. **Check system status**:
+5. **檢查系統狀態**：
    ```bash
-   curl http://localhost:5000/api/debug
+   curl http://localhost:5000/api/system_status
    ```
 
-7. **Toggle LangChain mode**:
-   ```bash
-   curl -X POST http://localhost:5000/api/toggle_langchain \
-     -H "Content-Type: application/json" \
-     -d '{"enable_langchain": true}'
-   ```
+## API 端點列表
 
-## Dataset Information
+### 新聞查詢
 
-This project uses the "Amazon Fine Food Reviews" dataset from Kaggle, containing approximately 568,454 food reviews from Amazon:
-https://www.kaggle.com/datasets/snap/amazon-fine-food-reviews
+- `GET /api/news` - 獲取新聞列表（支持分頁和類別過濾）
+- `GET /api/news/{news_id}` - 獲取特定新聞詳情
 
-The database file (`database.sqlite`) contains the following information:
-- Product review text and rating (1-5 stars)
-- Product information
-- User information
-- Review time and summary
+### 搜索
 
-## Troubleshooting
+- `GET /api/search?q={query}` - 基本文字搜索
+- `POST /api/query` - 自然語言查詢
 
-1. **Kaggle API authentication error**:
-   - Verify that the `~/.kaggle/kaggle.json` file exists and has the correct permissions
-   - If using manual download method, this error can be ignored
+### 系統
 
-2. **Database file not found**:
-   - Run `./download_data.sh` to download the database file
-   - Or follow the steps in "Option 2: Manual download" to download manually
-   - Verify that the `data/database.sqlite` file exists
+- `GET /api/debug` - 除錯信息
+- `GET /api/system_status` - 獲取系統狀態
 
-3. **Gemini API errors**:
-   - Confirm that the `GEMINI_API_KEY` is correctly set in the `.env` file
-   - Check if the API key is valid and whether usage limits have been reached
+## 項目結構
 
-4. **LangChain related errors**:
-   - Confirm that all necessary LangChain-related packages are installed
-   - Check if the AI model API key is correct
-   - Look for specific error messages related to LangChain in the logs
-
-## API Endpoint List
-
-### Review Queries
-
-- `GET /api/reviews` - Get review list (supports pagination and rating filtering)
-- `GET /api/reviews/{review_id}` - Get specific review details
-
-### Products and Users
-
-- `GET /api/product/{product_id}` - Get reviews for a specific product
-- `GET /api/user/{user_id}` - Get reviews by a specific user
-
-### Search
-
-- `GET /api/search?q={query}` - Basic review search
-- `POST /api/query` - Natural language query (using Gemini API)
-
-### System
-
-- `GET /api/debug` - Check system status
-- `GET /api/system_status` - Get detailed system status including LangChain availability
-- `POST /api/toggle_langchain` - Toggle LangChain mode
-
-## LangChain Enhanced Features
-
-This project now includes advanced capabilities through LangChain integration, enabling more sophisticated natural language processing and multi-step reasoning. LangChain uses a chain of tools to break down complex queries into sequences of steps.
-
-### Enabling LangChain
-
-There are three ways to enable LangChain:
-
-1. **Environment variable**: Set `USE_LANGCHAIN=true` in your environment or `.env` file.
-2. **Toggle in UI**: Use the toggle switch in the top right corner of the chat interface.
-3. **API parameter**: Add `"force_langchain": true` to your API requests.
-
-```bash
-# Example of toggling LangChain via API
-curl -X POST http://localhost:5000/api/toggle_langchain \
-  -H "Content-Type: application/json" \
-  -d '{"enable_langchain": true}'
+```
+bbc-news-api/
+├── app.py          # Flask 主應用
+├── db.py           # 數據庫連接和查詢模塊
+├── routes.py       # API 路由處理
+├── requirements.txt # 依賴列表
+├── scripts/        # 輔助腳本
+│   ├── download_data.sh    # 下載數據腳本
+│   └── csv_to_sqlite.py    # 轉換 CSV 到 SQLite
+├── static/         # 靜態資源
+│   ├── css/        # 樣式表
+│   └── js/         # JavaScript 文件
+├── templates/      # HTML 模板
+└── data/           # 數據文件夾
+    ├── bbc-news.csv       # 原始 CSV 數據
+    └── bbc_news.sqlite    # SQLite 數據庫
 ```
 
-### How LangChain Works
+## 擴展建議
 
-The LangChain agent uses multiple specialized tools to handle complex queries:
+1. 添加更多 NLP 功能，如文章摘要或情感分析
+2. 實現更高級的搜索功能，如相似度搜索
+3. 添加用戶認證和授權
+4. 增加對更多新聞源的支持
 
-1. **Problem decomposition**: Break down the user's natural language question into multiple processing steps.
-2. **Dynamic querying**: Adjust subsequent query strategies based on intermediate results.
-3. **Data aggregation**: Use advanced SQL features (like GROUP BY, HAVING, WITH clauses, etc.) for data analysis.
-4. **Result interpretation**: Provide detailed analysis and reasoning processes.
+## 故障排除
 
-The main tools used by the LangChain agent include:
+1. **數據庫文件不存在**：
+   - 執行 `./scripts/download_data.sh` 確保已下載並轉換數據
+   - 確認 `data/bbc_news.sqlite` 文件存在
 
-- **SQL query executor**: Executes complex SQL queries and returns results.
-- **Data analyzer**: Extracts statistics and insights from query results.
-- **Follow-up query processor**: Conducts further analysis based on initial query results.
-- **Database schema analyzer**: Retrieves information about the database table structure.
-- **Sample query runner**: Executes preset sample queries to understand data characteristics.
-
-### Comparing Standard RAG vs. LangChain
-
-The table below shows the key differences between the standard RAG approach and LangChain enhanced queries:
-
-| Feature | Standard RAG | LangChain Enhanced |
-|---------|-------------|-------------------|
-| Query complexity | Single-step, direct mapping to SQL | Multi-step reasoning, dynamic query construction |
-| Self-correction | No | Yes, can adjust queries based on intermediate results |
-| Analysis depth | Basic | In-depth with data aggregation capabilities |
-| Interactive | No | Can suggest related queries |
-| Data insights | Limited to direct results | Provides broader context and patterns |
-| SQL complexity | Simple WHERE conditions | Supports advanced SQL features (WITH clauses, window functions, etc.) |
-| Multi-table operations | Limited | Fully supports multi-table join queries |
-| Result visualization | Basic | Provides structured data and explanatory text |
-| Reasoning transparency | Opaque | Displays complete reasoning process and intermediate steps |
-
-### Sample Complex Queries for LangChain
-
-LangChain excels with complex queries that require multiple steps or deeper analysis. Try these examples to see the difference:
-
-1. **Multi-step aggregation queries**:
-   - "What are the top 5 products with the most reviews in the last 3 years?"
-   - "Show me which products have higher than average ratings but with at least 10 reviews"
-
-2. **Trend analysis**:
-   - "Has the average rating for chocolate products improved over time?"
-   - "Are people writing longer reviews for highly rated products?"
-
-3. **Complex filtering with analytics**:
-   - "Find users who gave both 5-star and 1-star ratings and compare their review styles"
-   - "Which products have polarizing reviews (many 5-star and many 1-star ratings)?"
-
-4. **Comparative analysis**:
-   - "Compare reviews for products B001E4KFG0 and B000LQOCH0 in terms of sentiment and common keywords"
-   - "What are the most common complaints in negative reviews for highly rated products?"
-
-5. **Data depth analysis**:
-   - "Which reviews have the highest helpfulness ratings? Analyze the common characteristics of these reviews"
-   - "Analyze the length distribution of reviews across different rating levels (1-5 stars)"
-   - "Identify seasonal patterns in review data, such as whether chocolate products receive higher ratings during holidays"
-
-6. **User behavior analysis**:
-   - "Which users have posted the most reviews? What are their review styles like?"
-   - "Identify users whose reviews differ from the majority opinion (e.g., those who give low ratings to products that are usually highly rated)"
-
-### Using Advanced SQL Features
-
-LangChain is capable of generating and executing queries that include the following advanced SQL features:
-
-1. **WITH clause**: Used for complex multi-step queries
-   ```sql
-   WITH product_stats AS (
-     SELECT ProductId, AVG(Score) as avg_score, COUNT(*) as review_count
-     FROM Reviews
-     GROUP BY ProductId
-     HAVING review_count >= 10
-   )
-   SELECT * FROM product_stats WHERE avg_score > 4
-   ```
-
-2. **Window functions**: Used for comparisons and sorting
-   ```sql
-   SELECT ProductId, Score, 
-          AVG(Score) OVER (PARTITION BY ProductId) as avg_product_score
-   FROM Reviews
-   WHERE ProductId IN ('B001E4KFG0', 'B000LQOCH0')
-   ```
-
-3. **Complex conditional logic**: Using CASE WHEN for conditional processing
-   ```sql
-   SELECT ProductId,
-          SUM(CASE WHEN Score = 5 THEN 1 ELSE 0 END) as five_star_count,
-          SUM(CASE WHEN Score = 1 THEN 1 ELSE 0 END) as one_star_count
-   FROM Reviews
-   GROUP BY ProductId
-   ```
-
-### Testing the Difference
-
-To experience the full power of LangChain, try running the same complex query with and without LangChain enabled:
-
-1. Toggle LangChain OFF and ask: "What products have the most helpful reviews for chocolate with at least a 4-star rating?"
-2. Toggle LangChain ON and ask the same question.
-
-Notice how the LangChain version provides:
-- More comprehensive results
-- Step-by-step reasoning
-- Additional insights
-- Better structured data
-
-### Viewing LangChain's Reasoning
-
-When using the UI with LangChain enabled, you'll see a "Show reasoning steps" dropdown that reveals how LangChain broke down your query and the intermediate steps it took to arrive at the answer. This transparency helps understand the system's reasoning process.
-
-Each reasoning step includes:
-1. **Tools used**: Such as SQL query executor, data analyzer, etc.
-2. **Input**: Parameters or questions passed to the tool
-3. **Output**: Results returned by the tool
-4. **Follow-up action decisions**: How LangChain decides the next step based on existing results
-
-### LangChain UI Features
-
-When using LangChain in the chat interface, you will see the following dedicated features:
-
-1. **LangChain switch**: A toggle button in the top right corner to switch query modes instantly
-2. **Query method labels**: Each response will indicate the query method used (Standard RAG or LangChain)
-3. **Reasoning steps display**: An expandable area showing the complete reasoning process of LangChain
-4. **Intermediate results view**: Ability to view detailed results for each step
-5. **Response formatting**: Enhanced response format, including clear presentation of ratings, review text, and statistics
-
-## Future Plans
-
-We plan to enhance the LangChain integration by:
-1. Adding more specialized tools for deeper analysis
-2. Implementing conversation memory for follow-up questions
-3. Supporting more complex data visualization capabilities
-4. Adding automatic insight generation for all queries
-5. Developing more specific analysis patterns for food reviews
-6. Providing custom query template functionality, allowing users to save and reuse common analysis patterns
-7. Integrating advanced data chart generation capabilities
-8. Expanding multi-language support to allow natural language queries in more languages
+2. **應用啟動錯誤**：
+   - 檢查所有依賴是否已正確安裝
+   - 查看日誌以獲取詳細錯誤信息

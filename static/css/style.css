@@ -28,11 +28,10 @@ body {
 
 .chat-header {
   padding: 20px;
-  background-color: #4285f4;
+  background-color: #bb1919; /* BBC 紅色 */
   color: white;
   text-align: center;
   position: relative;
-  padding-bottom: 40px;
 }
 
 .chat-header h1 {
@@ -43,28 +42,7 @@ body {
 .chat-header p {
   font-size: 0.9rem;
   opacity: 0.8;
-  margin-bottom: 30px;
-}
-
-.api-link {
-  position: absolute;
-  top: 20px;
-  right: 20px;
-}
-
-.api-link a {
-  display: inline-block;
-  background-color: rgba(255, 255, 255, 0.2);
-  color: white;
-  text-decoration: none;
-  padding: 5px 12px;
-  border-radius: 15px;
-  font-size: 0.85rem;
-  transition: background-color 0.2s;
-}
-
-.api-link a:hover {
-  background-color: rgba(255, 255, 255, 0.3);
+  margin-bottom: 10px;
 }
 
 .chat-messages {
@@ -101,7 +79,7 @@ body {
 }
 
 .system-message li {
-  margin-bottom: 5px;
+  margin-bottom: 10px;
 }
 
 .chat-input {
@@ -124,11 +102,11 @@ body {
 }
 
 #user-input:focus {
-  border-color: #4285f4;
+  border-color: #bb1919; /* BBC 紅色 */
 }
 
 #send-button {
-  background-color: #4285f4;
+  background-color: #bb1919; /* BBC 紅色 */
   color: white;
   border: none;
   border-radius: 25px;
@@ -139,11 +117,11 @@ body {
 }
 
 #send-button:hover {
-  background-color: #3367d6;
+  background-color: #a50f0f; /* 深紅色調 */
 }
 
 #clear-button {
-  background-color: #f44336; /* 紅色調 */
+  background-color: #333333; /* 灰色調 */
   color: white;
   border: none;
   border-radius: 25px;
@@ -154,7 +132,7 @@ body {
 }
 
 #clear-button:hover {
-  background-color: #d32f2f; /* 深紅色調 */
+  background-color: #222222; /* 深灰色調 */
 }
 
 .loading {
@@ -192,188 +170,33 @@ body {
   }
 }
 
-/* LangChain toggle switch */
-.langchain-toggle {
-  position: absolute;
-  bottom: 10px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  z-index: 5;
-  background-color: rgba(25, 118, 210, 0.3);
-  padding: 5px 12px;
-  border-radius: 20px;
-}
-
-#langchain-status {
+/* 新聞類別標籤 */
+.category-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 4px;
   font-size: 0.85rem;
   color: white;
-  white-space: nowrap;
-  margin-right: 5px;
-}
-
-/* The switch - the box around the slider */
-.switch {
-  position: relative;
-  display: inline-block;
-  width: 40px;
-  height: 20px;
-  flex-shrink: 0;
-}
-
-/* Hide default HTML checkbox */
-.switch input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-
-/* The slider */
-.slider {
-  position: absolute;
-  cursor: pointer;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(255, 255, 255, 0.2);
-  -webkit-transition: .3s;
-  transition: .3s;
-}
-
-.slider:before {
-  position: absolute;
-  content: "";
-  height: 16px;
-  width: 16px;
-  left: 2px;
-  bottom: 2px;
-  background-color: white;
-  -webkit-transition: .3s;
-  transition: .3s;
-}
-
-input:checked + .slider {
-  background-color: #2196F3;
-}
-
-input:focus + .slider {
-  box-shadow: 0 0 1px #2196F3;
-}
-
-input:checked + .slider:before {
-  -webkit-transform: translateX(20px);
-  -ms-transform: translateX(20px);
-  transform: translateX(20px);
-}
-
-/* Rounded sliders */
-.slider.round {
-  border-radius: 24px;
-}
-
-.slider.round:before {
-  border-radius: 50%;
-}
-
-/* Tooltip */
-.tooltip {
-  position: relative;
-  display: inline-block;
-  font-size: 0.8rem;
-  background-color: rgba(255, 255, 255, 0.2);
-  color: white;
-  padding: 2px 5px;
-  border-radius: 10px;
-  cursor: pointer;
-  white-space: nowrap;
-  width: 20px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.tooltip:hover {
-  width: auto;
-  max-width: 250px;
-  white-space: normal;
-  z-index: 10;
-}
-
-/* LangChain response */
-.langchain-response {
-  position: relative;
-  padding: 12px;
-  border-radius: 8px;
-  border-left: 4px solid #4285f4;
-  margin-bottom: 10px;
-}
-
-.response-content {
-  white-space: pre-line;
-}
-
-.intermediate-steps {
-  margin-top: 10px;
-  border-top: 1px solid #ddd;
-  padding-top: 10px;
-}
-
-.intermediate-steps summary {
-  cursor: pointer;
-  color: #4285f4;
-  font-weight: 500;
-  padding: 5px 0;
-}
-
-.intermediate-steps ol {
-  margin-top: 10px;
-}
-
-.intermediate-steps li {
-  margin-bottom: 15px;
-  padding: 10px;
-  background-color: #f9f9f9;
-  border-radius: 4px;
-}
-
-.intermediate-steps code {
-  display: block;
-  background: #f1f1f1;
-  padding: 5px;
-  margin: 5px 0;
-  border-radius: 4px;
-  font-family: monospace;
-  white-space: pre-wrap;
-}
-
-.intermediate-steps pre {
-  max-height: 150px;
-  overflow-y: auto;
-  background: #f1f1f1;
-  padding: 5px;
-  margin: 5px 0;
-  border-radius: 4px;
-  font-family: monospace;
-  white-space: pre-wrap;
-}
-
-/* Query method badge */
-.query-method-badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-size: 0.7rem;
   font-weight: bold;
-  color: white;
-  margin: 5px 0;
+  margin-left: 5px;
 }
 
-.query-method-badge.langchain {
-  background-color: #4285f4;
+.category-badge.business {
+  background-color: #1E88E5; /* 藍色 */
 }
 
-.query-method-badge.standard_rag {
-  background-color: #34a853;
+.category-badge.entertainment {
+  background-color: #E91E63; /* 粉紅色 */
+}
+
+.category-badge.politics {
+  background-color: #8E24AA; /* 紫色 */
+}
+
+.category-badge.sport {
+  background-color: #43A047; /* 綠色 */
+}
+
+.category-badge.tech {
+  background-color: #FFA000; /* 橙色 */
 }
