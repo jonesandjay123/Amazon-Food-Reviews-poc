@@ -96,6 +96,7 @@ JSON Response → Frontend Display
 3. **Install dependencies**:
 
    ```bash
+   pip install --upgrade pip setuptools wheel
    pip install -r requirements.txt
    ```
 

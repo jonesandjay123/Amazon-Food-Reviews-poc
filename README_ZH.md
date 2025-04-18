@@ -96,6 +96,7 @@ JSON 響應 → 前端顯示
 3. **安裝依賴**：
 
    ```bash
+   pip install --upgrade pip setuptools wheel
    pip install -r requirements.txt
    ```
 

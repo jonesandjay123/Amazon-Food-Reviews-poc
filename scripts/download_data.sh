@@ -1,20 +1,16 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -e
 
-# Create data directory (if it doesn't exist)
 mkdir -p data
 
-# Download BBC News dataset
-echo "Downloading BBC News dataset..."
-curl -L -o data/bbc-news.csv https://storage.googleapis.com/ztm_tf_course/bbc-text.csv
+URL_PRIMARY="https://raw.githubusercontent.com/selva86/datasets/master/bbc-text.csv"
+URL_FALLBACK="https://cdn.jsdelivr.net/gh/selva86/datasets@master/bbc-text.csv"
 
-# Check if download was successful
-if [ $? -ne 0 ]; then
-    echo "Download failed, please check your connection and try again"
-    exit 1
-fi
+echo ">>> Downloading BBC News dataset…"
+curl -fL "$URL_PRIMARY" -o data/bbc-news.csv \
+  || { echo "[warn] primary URL failed, trying fallback…"; \
+       curl -fL "$URL_FALLBACK" -o data/bbc-news.csv; }
 
-# Convert to SQLite database
-echo "Converting to SQLite database..."
+echo ">>> Converting to SQLite…"
 python scripts/csv_to_sqlite.py
-
-echo "Data preparation complete!" 
+echo ">>> DONE!"
