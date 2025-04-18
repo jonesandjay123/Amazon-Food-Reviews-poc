@@ -20,7 +20,7 @@ This project uses the BBC News Dataset, which includes news articles in five mai
 - **sport**: Sports news
 - **tech**: Technology news
 
-Data source: `https://storage.googleapis.com/ztm_tf_course/bbc-text.csv`
+Data source: `https://huggingface.co/datasets/hf-internal/bbc-text/resolve/main/bbc-text.csv`
 
 ## Project Structure Diagram
 
@@ -29,17 +29,15 @@ bbc-news-api/
 ├── app.py              # Flask main application entry point
 ├── routes.py           # API route handling logic
 ├── db.py               # Database connection and query module
-├── chatgpt_model.py    # ChatGPT model integration(reserved use)
+├── chatgpt_model.py    # ChatGPT AI model integration
 ├── gemini_model.py     # Gemini AI model integration
 ├── requirements.txt    # Dependency package list
 ├── .env                # Environment variable configuration file
 ├── template.env        # Environment variable template
-├── download_data.sh    # Data download script
 ├── README.md           # English documentation
 ├── README_ZH.md        # Chinese documentation
 │
 ├── scripts/            # Helper scripts
-│   ├── download_data.sh    # Data download script
 │   └── csv_to_sqlite.py    # Convert CSV to SQLite
 │
 ├── static/             # Static resources
@@ -109,11 +107,14 @@ JSON Response → Frontend Display
    # Then edit the .env file to add your API key
    ```
 
-5. **Download data and create SQLite database**:
+5. **Prepare data**:
 
    ```bash
-   chmod +x scripts/download_data.sh
-   ./scripts/download_data.sh
+   # Step 5: Prepare data
+   1. Download CSV: https://huggingface.co/datasets/hf-internal/bbc-text/resolve/main/bbc-text.csv
+   2. Rename the file to bbc-news.csv and place it in the data/ folder
+   3. Convert to SQLite
+      python scripts/csv_to_sqlite.py
    ```
 
 ## Running the Application
@@ -223,7 +224,8 @@ Visit the chat interface: http://localhost:5000/
 ## Troubleshooting
 
 1. **Database file does not exist**:
-   - Run `./scripts/download_data.sh` to ensure data has been downloaded and converted
+   - Make sure you've downloaded the CSV file and placed it in the data/ folder
+   - Run `python scripts/csv_to_sqlite.py` to convert the CSV to SQLite
    - Confirm that the `data/bbc_news.sqlite` file exists
 
 2. **Natural language query functionality is unavailable**:

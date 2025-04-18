@@ -20,7 +20,7 @@
 - **sport**: 體育新聞
 - **tech**: 科技新聞
 
-數據來源：`https://storage.googleapis.com/ztm_tf_course/bbc-text.csv`
+數據來源：`https://huggingface.co/datasets/hf-internal/bbc-text/resolve/main/bbc-text.csv`
 
 ## 專案架構圖
 
@@ -29,17 +29,15 @@ bbc-news-api/
 ├── app.py              # Flask 主應用入口點
 ├── routes.py           # API 路由處理邏輯
 ├── db.py               # 數據庫連接和查詢模塊
-├── chatgpt_model.py    # ChatGPT 模型整合(保留使用)
+├── chatgpt_model.py    # ChatGPT AI 模型整合
 ├── gemini_model.py     # Gemini AI 模型整合
 ├── requirements.txt    # 依賴套件列表
 ├── .env                # 環境變數配置文件
 ├── template.env        # 環境變數範本
-├── download_data.sh    # 數據下載腳本
 ├── README.md           # 英文說明文件
 ├── README_ZH.md        # 中文說明文件
 │
 ├── scripts/            # 輔助腳本
-│   ├── download_data.sh    # 下載數據腳本
 │   └── csv_to_sqlite.py    # 轉換 CSV 到 SQLite
 │
 ├── static/             # 靜態資源
@@ -109,11 +107,14 @@ JSON 響應 → 前端顯示
    # 然後編輯 .env 文件添加你的 API 密鑰
    ```
 
-5. **下載數據並創建 SQLite 數據庫**：
+5. **準備資料**：
 
    ```bash
-   chmod +x scripts/download_data.sh
-   ./scripts/download_data.sh
+   # Step 5: 準備資料
+   1. 下載 CSV：https://huggingface.co/datasets/hf-internal/bbc-text/resolve/main/bbc-text.csv
+   2. 將檔案重新命名為 bbc-news.csv 放到 data/ 資料夾
+   3. 轉檔
+      python scripts/csv_to_sqlite.py
    ```
 
 ## 運行應用
@@ -223,7 +224,8 @@ python app.py
 ## 故障排除
 
 1. **數據庫文件不存在**：
-   - 執行 `./scripts/download_data.sh` 確保已下載並轉換數據
+   - 確保已下載 CSV 文件並放置在 data/ 文件夾中
+   - 執行 `python scripts/csv_to_sqlite.py` 轉換 CSV 到 SQLite
    - 確認 `data/bbc_news.sqlite` 文件存在
 
 2. **自然語言查詢功能不可用**：

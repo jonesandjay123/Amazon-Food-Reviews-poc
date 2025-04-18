@@ -20,7 +20,7 @@ cache = {
 def get_db_connection():
     """Establish and return a SQLite database connection"""
     if not os.path.exists(DB_PATH):
-        raise FileNotFoundError(f"Database file not found: {DB_PATH}. Please run scripts/download_data.sh to download and convert data first.")
+        raise FileNotFoundError(f"Database file not found: {DB_PATH}. Please download CSV file manually and run scripts/csv_to_sqlite.py to convert data first.")
     
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row  # Return results as dictionaries

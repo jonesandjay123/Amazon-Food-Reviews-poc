@@ -32,6 +32,8 @@ var/
 
 # 數據文件
 data/*.csv
+data/bbc-news.csv
+data/bbc_news.sqlite
 
 # 日誌文件
 *.log
