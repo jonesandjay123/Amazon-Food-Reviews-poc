@@ -1,14 +1,15 @@
 # BBC News Mini Corpus API
 
-一個基於 BBC News Dataset 的 RESTful API，支持各類別的新聞查詢和自然語言查詢。
+一個基於 BBC News Dataset 的 RESTful API，支持各類別的新聞查詢和自然語言查詢處理系統。
 
 ## 主要特點
 
 - 📰 使用 SQLite 資料庫存取 BBC News 文章數據
 - 🔍 高效的查詢緩存機制，提升查詢速度
-- 💬 支持自然語言查詢處理
+- 💬 支持自然語言查詢處理（使用Gemini AI模型）
 - 🗄️ 簡潔、模塊化的代碼結構
 - 🚀 輕量級設計，易於擴展
+- 🌐 提供網頁界面進行直觀查詢
 
 ## 資料集資訊
 
@@ -21,12 +22,59 @@
 
 數據來源：`https://storage.googleapis.com/ztm_tf_course/bbc-text.csv`
 
+## 專案架構圖
+
+```
+bbc-news-api/
+├── app.py              # Flask 主應用入口點
+├── routes.py           # API 路由處理邏輯
+├── db.py               # 數據庫連接和查詢模塊
+├── gemini_model.py     # Gemini AI 模型整合
+├── requirements.txt    # 依賴套件列表
+├── .env                # 環境變數配置文件
+├── template.env        # 環境變數範本
+├── download_data.sh    # 數據下載腳本
+├── README.md           # 英文說明文件
+├── README_ZH.md        # 中文說明文件
+│
+├── scripts/            # 輔助腳本
+│   ├── download_data.sh    # 下載數據腳本
+│   └── csv_to_sqlite.py    # 轉換 CSV 到 SQLite
+│
+├── static/             # 靜態資源
+│   ├── css/
+│   │   └── style.css       # 樣式表
+│   └── js/
+│       └── script.js       # 前端交互脚本
+│
+├── templates/          # HTML 模板
+│   ├── index.html          # 主頁面/聊天界面
+│   └── api.html            # API 文檔頁面
+│
+└── data/               # 數據文件夾 (自動創建)
+    ├── bbc-news.csv        # 原始 CSV 數據
+    └── bbc_news.sqlite     # SQLite 數據庫
+```
+
+## 系統流程圖
+
+```
+用户請求 → Flask 應用 (app.py)
+    ↓
+路由處理 (routes.py) → 數據庫查詢 (db.py) → SQLite 數據庫
+    ↓                     ↑
+自然語言解析 ← Gemini AI 模型 (gemini_model.py)
+    ↓
+JSON 響應 → 前端顯示
+```
+
 ## 環境設置
 
 ### 前置條件
 
 - Python 3.8+
 - 網絡連接（用於下載數據集）
+- Gemini API Key（可選，用於自然語言查詢功能）
 
 ### 安裝步驟
 
@@ -50,7 +98,16 @@
    pip install -r requirements.txt
    ```
 
-4. **下載數據並創建 SQLite 數據庫**：
+4. **配置環境變數**：
+
+   將 `template.env` 複製為 `.env` 並設定你的 Gemini API Key（如果需要自然語言查詢功能）：
+
+   ```bash
+   cp template.env .env
+   # 然後編輯 .env 文件添加你的 API 密鑰
+   ```
+
+5. **下載數據並創建 SQLite 數據庫**：
 
    ```bash
    chmod +x scripts/download_data.sh
@@ -131,37 +188,27 @@ python app.py
 ### 新聞查詢
 
 - `GET /api/news` - 獲取新聞列表（支持分頁和類別過濾）
+  - 參數: `page`, `limit`, `category`, `keyword`
 - `GET /api/news/{news_id}` - 獲取特定新聞詳情
 
 ### 搜索
 
 - `GET /api/search?q={query}` - 基本文字搜索
+  - 參數: `q`, `page`, `limit`
 - `POST /api/query` - 自然語言查詢
+  - 請求體: `{"query": "自然語言查詢文本"}`
 
 ### 系統
 
 - `GET /api/debug` - 除錯信息
 - `GET /api/system_status` - 獲取系統狀態
 
-## 項目結構
+## 主要模塊功能
 
-```
-bbc-news-api/
-├── app.py          # Flask 主應用
-├── db.py           # 數據庫連接和查詢模塊
-├── routes.py       # API 路由處理
-├── requirements.txt # 依賴列表
-├── scripts/        # 輔助腳本
-│   ├── download_data.sh    # 下載數據腳本
-│   └── csv_to_sqlite.py    # 轉換 CSV 到 SQLite
-├── static/         # 靜態資源
-│   ├── css/        # 樣式表
-│   └── js/         # JavaScript 文件
-├── templates/      # HTML 模板
-└── data/           # 數據文件夾
-    ├── bbc-news.csv       # 原始 CSV 數據
-    └── bbc_news.sqlite    # SQLite 數據庫
-```
+- **app.py**: Flask 應用入口點，初始化服務和路由
+- **routes.py**: 處理所有 API 路由和請求邏輯
+- **db.py**: 數據庫連接和查詢處理，包含緩存機制
+- **gemini_model.py**: 與 Gemini AI 模型整合，處理自然語言查詢解析
 
 ## 擴展建議
 
@@ -169,6 +216,7 @@ bbc-news-api/
 2. 實現更高級的搜索功能，如相似度搜索
 3. 添加用戶認證和授權
 4. 增加對更多新聞源的支持
+5. 添加定期數據更新機制
 
 ## 故障排除
 
@@ -176,6 +224,14 @@ bbc-news-api/
    - 執行 `./scripts/download_data.sh` 確保已下載並轉換數據
    - 確認 `data/bbc_news.sqlite` 文件存在
 
-2. **應用啟動錯誤**：
+2. **自然語言查詢功能不可用**：
+   - 確認 `.env` 文件存在並包含有效的 `GEMINI_API_KEY`
+   - 檢查 API 密鑰限制和網絡連接
+
+3. **應用啟動錯誤**：
    - 檢查所有依賴是否已正確安裝
    - 查看日誌以獲取詳細錯誤信息
+   
+4. **查詢返回空結果**：
+   - 確認數據庫已正確創建且包含數據
+   - 使用 `api/system_status` 端點檢查系統狀態
