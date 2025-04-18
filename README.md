@@ -9,6 +9,7 @@ A RESTful API based on the Kaggle Amazon Fine Food Reviews dataset, supporting f
 - 💬 Google Gemini API integration for natural language processing
 - 📚 Complete Swagger API documentation
 - 🧠 Intelligent review search and analysis
+- 🔗 LangChain agent enhanced complex queries and multi-step analysis
 
 ## Environment Setup
 
@@ -44,6 +45,7 @@ A RESTful API based on the Kaggle Amazon Fine Food Reviews dataset, supporting f
    Create a `.env` file and add the following:
    ```
    GEMINI_API_KEY=your_gemini_api_key_here
+   USE_LANGCHAIN=true  # Optional, set to enable LangChain by default
    ```
 
 ### Kaggle API Setup
@@ -65,8 +67,10 @@ chmod +x download_data.sh
 This will download the database file and extract it to the `data` directory.
 
 #### Option 2: Manual download
+If you cannot use Kaggle CLI or encounter issues, you can manually download the data:
+
 1. Manually download the dataset from Kaggle: [Amazon Fine Food Reviews](https://www.kaggle.com/datasets/snap/amazon-fine-food-reviews)
-2. Extract the `database.sqlite` file
+2. Extract the downloaded file to get the `database.sqlite` file
 3. Create a `data` directory in your project root if it doesn't exist
 4. Place the `database.sqlite` file in the `data` directory
 
@@ -140,27 +144,42 @@ You can test the API in several ways:
      -d '{"query":"Find 5-star reviews for chocolate"}'
    ```
 
-2. **Get review list**:
+2. **Using LangChain for natural language queries**:
+   
+   ```bash
+   curl -X POST http://localhost:5000/api/query \
+     -H "Content-Type: application/json" \
+     -d '{"query":"Find products with polarized reviews for chocolate", "force_langchain": true}'
+   ```
+
+3. **Get review list**:
 
    ```bash
    curl http://localhost:5000/api/reviews?limit=10&min_score=5
    ```
 
-3. **Get reviews for a specific product**:
+4. **Get reviews for a specific product**:
 
    ```bash
    curl http://localhost:5000/api/product/B001E4KFG0
    ```
 
-4. **Search reviews**:
+5. **Search reviews**:
 
    ```bash
    curl http://localhost:5000/api/search?q=delicious
    ```
 
-5. **Check system status**:
+6. **Check system status**:
    ```bash
    curl http://localhost:5000/api/debug
+   ```
+
+7. **Toggle LangChain mode**:
+   ```bash
+   curl -X POST http://localhost:5000/api/toggle_langchain \
+     -H "Content-Type: application/json" \
+     -d '{"enable_langchain": true}'
    ```
 
 ## Dataset Information
@@ -178,14 +197,21 @@ The database file (`database.sqlite`) contains the following information:
 
 1. **Kaggle API authentication error**:
    - Verify that the `~/.kaggle/kaggle.json` file exists and has the correct permissions
+   - If using manual download method, this error can be ignored
 
 2. **Database file not found**:
    - Run `./download_data.sh` to download the database file
+   - Or follow the steps in "Option 2: Manual download" to download manually
    - Verify that the `data/database.sqlite` file exists
 
 3. **Gemini API errors**:
    - Confirm that the `GEMINI_API_KEY` is correctly set in the `.env` file
    - Check if the API key is valid and whether usage limits have been reached
+
+4. **LangChain related errors**:
+   - Confirm that all necessary LangChain-related packages are installed
+   - Check if the AI model API key is correct
+   - Look for specific error messages related to LangChain in the logs
 
 ## API Endpoint List
 
@@ -229,6 +255,23 @@ curl -X POST http://localhost:5000/api/toggle_langchain \
   -d '{"enable_langchain": true}'
 ```
 
+### How LangChain Works
+
+The LangChain agent uses multiple specialized tools to handle complex queries:
+
+1. **Problem decomposition**: Break down the user's natural language question into multiple processing steps.
+2. **Dynamic querying**: Adjust subsequent query strategies based on intermediate results.
+3. **Data aggregation**: Use advanced SQL features (like GROUP BY, HAVING, WITH clauses, etc.) for data analysis.
+4. **Result interpretation**: Provide detailed analysis and reasoning processes.
+
+The main tools used by the LangChain agent include:
+
+- **SQL query executor**: Executes complex SQL queries and returns results.
+- **Data analyzer**: Extracts statistics and insights from query results.
+- **Follow-up query processor**: Conducts further analysis based on initial query results.
+- **Database schema analyzer**: Retrieves information about the database table structure.
+- **Sample query runner**: Executes preset sample queries to understand data characteristics.
+
 ### Comparing Standard RAG vs. LangChain
 
 The table below shows the key differences between the standard RAG approach and LangChain enhanced queries:
@@ -240,6 +283,10 @@ The table below shows the key differences between the standard RAG approach and 
 | Analysis depth | Basic | In-depth with data aggregation capabilities |
 | Interactive | No | Can suggest related queries |
 | Data insights | Limited to direct results | Provides broader context and patterns |
+| SQL complexity | Simple WHERE conditions | Supports advanced SQL features (WITH clauses, window functions, etc.) |
+| Multi-table operations | Limited | Fully supports multi-table join queries |
+| Result visualization | Basic | Provides structured data and explanatory text |
+| Reasoning transparency | Opaque | Displays complete reasoning process and intermediate steps |
 
 ### Sample Complex Queries for LangChain
 
@@ -261,6 +308,47 @@ LangChain excels with complex queries that require multiple steps or deeper anal
    - "Compare reviews for products B001E4KFG0 and B000LQOCH0 in terms of sentiment and common keywords"
    - "What are the most common complaints in negative reviews for highly rated products?"
 
+5. **Data depth analysis**:
+   - "Which reviews have the highest helpfulness ratings? Analyze the common characteristics of these reviews"
+   - "Analyze the length distribution of reviews across different rating levels (1-5 stars)"
+   - "Identify seasonal patterns in review data, such as whether chocolate products receive higher ratings during holidays"
+
+6. **User behavior analysis**:
+   - "Which users have posted the most reviews? What are their review styles like?"
+   - "Identify users whose reviews differ from the majority opinion (e.g., those who give low ratings to products that are usually highly rated)"
+
+### Using Advanced SQL Features
+
+LangChain is capable of generating and executing queries that include the following advanced SQL features:
+
+1. **WITH clause**: Used for complex multi-step queries
+   ```sql
+   WITH product_stats AS (
+     SELECT ProductId, AVG(Score) as avg_score, COUNT(*) as review_count
+     FROM Reviews
+     GROUP BY ProductId
+     HAVING review_count >= 10
+   )
+   SELECT * FROM product_stats WHERE avg_score > 4
+   ```
+
+2. **Window functions**: Used for comparisons and sorting
+   ```sql
+   SELECT ProductId, Score, 
+          AVG(Score) OVER (PARTITION BY ProductId) as avg_product_score
+   FROM Reviews
+   WHERE ProductId IN ('B001E4KFG0', 'B000LQOCH0')
+   ```
+
+3. **Complex conditional logic**: Using CASE WHEN for conditional processing
+   ```sql
+   SELECT ProductId,
+          SUM(CASE WHEN Score = 5 THEN 1 ELSE 0 END) as five_star_count,
+          SUM(CASE WHEN Score = 1 THEN 1 ELSE 0 END) as one_star_count
+   FROM Reviews
+   GROUP BY ProductId
+   ```
+
 ### Testing the Difference
 
 To experience the full power of LangChain, try running the same complex query with and without LangChain enabled:
@@ -278,10 +366,30 @@ Notice how the LangChain version provides:
 
 When using the UI with LangChain enabled, you'll see a "Show reasoning steps" dropdown that reveals how LangChain broke down your query and the intermediate steps it took to arrive at the answer. This transparency helps understand the system's reasoning process.
 
+Each reasoning step includes:
+1. **Tools used**: Such as SQL query executor, data analyzer, etc.
+2. **Input**: Parameters or questions passed to the tool
+3. **Output**: Results returned by the tool
+4. **Follow-up action decisions**: How LangChain decides the next step based on existing results
+
+### LangChain UI Features
+
+When using LangChain in the chat interface, you will see the following dedicated features:
+
+1. **LangChain switch**: A toggle button in the top right corner to switch query modes instantly
+2. **Query method labels**: Each response will indicate the query method used (Standard RAG or LangChain)
+3. **Reasoning steps display**: An expandable area showing the complete reasoning process of LangChain
+4. **Intermediate results view**: Ability to view detailed results for each step
+5. **Response formatting**: Enhanced response format, including clear presentation of ratings, review text, and statistics
+
 ## Future Plans
 
 We plan to enhance the LangChain integration by:
 1. Adding more specialized tools for deeper analysis
 2. Implementing conversation memory for follow-up questions
 3. Supporting more complex data visualization capabilities
-4. Adding automatic insight generation for all queries 
+4. Adding automatic insight generation for all queries
+5. Developing more specific analysis patterns for food reviews
+6. Providing custom query template functionality, allowing users to save and reuse common analysis patterns
+7. Integrating advanced data chart generation capabilities
+8. Expanding multi-language support to allow natural language queries in more languages
