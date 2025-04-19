@@ -1,32 +1,39 @@
-# gemini_model.py 
-import os
-import json
-import google.generativeai as genai
+# gemini_model.py
+import os, json, re
+from google import genai
 
-MODEL_NAME = "gemini-2.5-pro-exp-03-25"       # Or "gemini-2.0-flash"
+# MODEL_NAME = "gemini-2.5-pro-exp-03-25"
+MODEL_NAME = "gemini-2.0-flash"
 
 class GeminiModel:
-    def __init__(self):
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            raise ValueError("GEMINI_API_KEY not set")
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel(MODEL_NAME)
+    def __init__(self) -> None:
+        key = os.getenv("GEMINI_API_KEY")
+        if not key:
+            raise RuntimeError("GEMINI_API_KEY not set")
+        self.client = genai.Client(api_key=key)
 
     def parse(self, query: str) -> dict:
-        """Parse the natural language query into {category, keyword}"""
         prompt = (
-            "Extract these JSON fields from the query if present:\n"
-            "category (business|entertainment|politics|sport|tech), "
-            "keyword (string)\n\n"
+            "Extract JSON fields {category, keyword} from the query if present.\n"
+            "Categories: business, entertainment, politics, sport, tech.\n"
+            "Please respond only with valid JSON.\n\n"
             f"Query: {query}"
         )
-        res = self.model.generate_content(
-            prompt,
-            generation_config=genai.GenerationConfig(response_mime_type="application/json"),
-        )
         try:
-            return json.loads(res.text)
-        except json.JSONDecodeError:
-            # If the LLM returns a random string, return {} to fall back
+            res = self.client.models.generate_content(
+                model=MODEL_NAME,
+                contents=prompt,
+            )
+
+            raw = res.text.strip()
+
+            # 清除 markdown 格式的 JSON 區塊 ```json\n...\n```
+            if raw.startswith("```"):
+                raw = re.sub(r"^```(?:json)?\n(.*?)\n```$", r"\1", raw, flags=re.DOTALL).strip()
+
+            return json.loads(raw)
+
+        except Exception as e:
+            print("⚠️ LLM 回傳錯誤：", e)
+            print("↪️ 回傳內容：", getattr(res, 'text', '(no response)'))
             return {}

@@ -29,9 +29,9 @@ def build_query(category: Optional[str], keyword: Optional[str],
         sql += " AND category = ?"; params.append(category)
     if keyword:
         kw = f"%{keyword}%"
-        sql += " AND (title LIKE ? OR text LIKE ?)"
-        params += [kw, kw]
-    sql += " ORDER BY id DESC LIMIT ? OFFSET ?"
+        sql += " AND text LIKE ?"
+        params.append(kw)
+    sql += " ORDER BY rowid DESC LIMIT ? OFFSET ?"
     params += [limit, offset]
     return sql, tuple(params)
 
@@ -39,12 +39,10 @@ def naive_parse(query: str) -> dict:
     cats = ["business","entertainment","politics","sport","tech"]
     q_low = query.lower()
     cat  = next((c for c in cats if c in q_low), None)
-    # Remove the category word and take the first long word as keyword
     words = [w for w in q_low.split() if w not in cats and len(w) > 4]
     kw = words[0] if words else None
     return {"category": cat, "keyword": kw}
 
-# -------- /news & /search (same as previous version) -------------------
 @app.route("/news")
 def news():
     page     = int(request.args.get("page", 1))
@@ -69,18 +67,31 @@ def search():
     if not q: return jsonify({"error":"q param required"}), 400
     return news()
 
-# -------- /query (use Gemini) -------------------------------------------
 @app.route("/query", methods=["POST"])
 def query():
     data = request.get_json(force=True)
     user_q = data.get("query")
     if not user_q:
-        return jsonify({"error":"query field required"}), 400
+        return jsonify({"error": "query field required"}), 400
 
     parsed = ai_model.parse(user_q) if ai_model else naive_parse(user_q)
-    sql, p = build_query(parsed.get("category"), parsed.get("keyword"), 10, 0)
+    cat = parsed.get("category")
+    kw  = parsed.get("keyword")
+
+    # first query
+    sql, p = build_query(cat, kw, 10, 0)
     rows   = execute(sql, p)
-    return jsonify({"query": user_q, "parsed": parsed, "results": rows})
+
+    # if no result, try again with only category
+    if not rows and kw:
+        sql, p = build_query(cat, None, 10, 0)
+        rows   = execute(sql, p)
+
+    return jsonify({
+        "query": user_q,
+        "parsed": parsed,
+        "results": rows
+    })
 
 @app.route("/system_status")
 def status():

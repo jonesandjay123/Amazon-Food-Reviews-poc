@@ -1,47 +1,23 @@
+<!-- templates/index.html -->
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>BBC News Mini Corpus</title>
-    <link
-      rel="stylesheet"
-      href="{{ url_for('static', filename='css/style.css') }}"
-    />
-  </head>
-  <body>
-    <div class="chat-container">
-      <div class="chat-header">
-        <h1>BBC News Mini Corpus Query System</h1>
-        <p>Use natural language to ask questions about BBC news articles</p>
-      </div>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BBC News Demo</title>
+  <style>
+    body{font-family:sans-serif;padding:2rem;max-width:700px;margin:auto}
+    #log{white-space:pre-wrap;border:1px solid #ccc;padding:1rem;height:50vh;overflow:auto;margin-bottom:1rem}
+    input,button{padding:.5rem 1rem;font-size:1rem}
+    button{margin-left:.5rem}
+  </style>
+</head>
+<body>
+  <h2>BBC News Mini Demo</h2>
+  <div id="log">Try: <code>tech news about Apple</code></div>
+  <input id="q" placeholder="Ask something..." />
+  <button id="send">Send</button>
 
-      <div class="chat-messages" id="chat-messages">
-        <div class="system-message">
-          <p>
-            Welcome to the BBC News Query System! Please enter your question, for example: "Find business news about markets" or "Search for tech articles about Apple"
-          </p>
-        </div>
-      </div>
-
-      <div class="chat-input">
-        <form id="query-form">
-          <input
-            type="text"
-            id="user-input"
-            placeholder="Enter your question..."
-            autocomplete="off"
-          />
-          <button type="submit" id="send-button">
-            <span>Send</span>
-          </button>
-          <button type="button" id="clear-button" title="Clear Messages">
-            <span>Clear</span>
-          </button>
-        </form>
-      </div>
-    </div>
-
-    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
-  </body>
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
 </html>
