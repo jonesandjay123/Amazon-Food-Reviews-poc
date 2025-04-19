@@ -21,9 +21,8 @@ document.getElementById("send").onclick = async () => {
 
   // show parsed result
   if (r.parsed) {
-    const parsedCat = r.parsed.category || "None";
-    const parsedKw  = r.parsed.keyword  || "None";
-    log.textContent += `\n↪️ AI understood: category=${parsedCat}, keyword=${parsedKw}`;
+    const parsedKw  = r.parsed.keyword || "None";
+    log.textContent += `\n↪️ AI understood: keyword=${parsedKw}`;
   }
 
   // show query results

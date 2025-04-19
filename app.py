@@ -1,5 +1,5 @@
 # app.py
-import os, time
+import os, time, re
 from typing import Optional
 from flask import Flask, render_template, request, jsonify
 from db import execute, DB_PATH
@@ -21,27 +21,21 @@ app = Flask(__name__)
 def home():
     return render_template("index.html")
 
-def build_query(category: Optional[str], keyword: Optional[str],
-                limit: int, offset: int) -> tuple[str, tuple]:
-    sql = "SELECT * FROM news WHERE 1=1"
-    params: list = []
-    if category:
-        sql += " AND category = ?"; params.append(category)
+# --- Query Builder ---
+def build_query(keyword: str | None, limit: int, offset: int) -> tuple[str, tuple]:
     if keyword:
-        kw = f"%{keyword}%"
-        sql += " AND text LIKE ?"
-        params.append(kw)
-    sql += " ORDER BY rowid DESC LIMIT ? OFFSET ?"
-    params += [limit, offset]
-    return sql, tuple(params)
+        sql = "SELECT * FROM news WHERE text LIKE ? ORDER BY rowid DESC LIMIT ? OFFSET ?"
+        return sql, (f"%{keyword}%", limit, offset)
+    # if not keyword, return all news
+    sql = "SELECT * FROM news ORDER BY rowid DESC LIMIT ? OFFSET ?"
+    return sql, (limit, offset)
 
+# --- fallback parse ---
 def naive_parse(query: str) -> dict:
-    cats = ["business","entertainment","politics","sport","tech"]
     q_low = query.lower()
-    cat  = next((c for c in cats if c in q_low), None)
-    words = [w for w in q_low.split() if w not in cats and len(w) > 4]
-    kw = words[0] if words else None
-    return {"category": cat, "keyword": kw}
+    words = re.findall(r"\b[a-z]{4,}\b", q_low)
+    kw = words[-1].rstrip('s') if words else None
+    return {"keyword": kw}
 
 @app.route("/news")
 def news():
@@ -67,25 +61,22 @@ def search():
     if not q: return jsonify({"error":"q param required"}), 400
     return news()
 
+# --- /query endpoint ---
 @app.route("/query", methods=["POST"])
 def query():
     data = request.get_json(force=True)
-    user_q = data.get("query")
+    user_q = data.get("query", "").strip()
     if not user_q:
         return jsonify({"error": "query field required"}), 400
 
-    parsed = ai_model.parse(user_q) if ai_model else naive_parse(user_q)
-    cat = parsed.get("category")
-    kw  = parsed.get("keyword")
+    parsed = ai_model.parse(user_q) if ai_model else {}
+    if not parsed.get("keyword"):
+        parsed = naive_parse(user_q)
 
-    # first query
-    sql, p = build_query(cat, kw, 10, 0)
+    kw = parsed.get("keyword")
+
+    sql, p = build_query(kw, 10, 0)
     rows   = execute(sql, p)
-
-    # if no result, try again with only category
-    if not rows and kw:
-        sql, p = build_query(cat, None, 10, 0)
-        rows   = execute(sql, p)
 
     return jsonify({
         "query": user_q,

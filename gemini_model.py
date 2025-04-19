@@ -14,26 +14,19 @@ class GeminiModel:
 
     def parse(self, query: str) -> dict:
         prompt = (
-            "Extract JSON fields {category, keyword} from the query if present.\n"
-            "Categories: business, entertainment, politics, sport, tech.\n"
-            "Please respond only with valid JSON.\n\n"
+            "You are a keyword extractor.  \n"
+            "ALWAYS reply with valid JSON: {\"keyword\": <string or null>}  \n"
+            "Pick ONE meaningful keyword or noun phrase from the user query.  \n"
+            "If nothing obvious, return null.  \n"
+            "NO markdown, JSON ONLY.\n\n"
             f"Query: {query}"
         )
-        try:
-            res = self.client.models.generate_content(
-                model=MODEL_NAME,
-                contents=prompt,
-            )
-
-            raw = res.text.strip()
-
-            # 清除 markdown 格式的 JSON 區塊 ```json\n...\n```
-            if raw.startswith("```"):
-                raw = re.sub(r"^```(?:json)?\n(.*?)\n```$", r"\1", raw, flags=re.DOTALL).strip()
-
-            return json.loads(raw)
-
-        except Exception as e:
-            print("⚠️ LLM 回傳錯誤：", e)
-            print("↪️ 回傳內容：", getattr(res, 'text', '(no response)'))
-            return {}
+        res = self.client.models.generate_content(
+            model=MODEL_NAME,
+            contents=prompt,
+        )
+        raw = res.text.strip()
+        # remove possible ```json block
+        if raw.startswith("```"):
+            raw = re.sub(r"^```(?:json)?\n(.*?)\n```$", r"\1", raw, flags=re.DOTALL).strip()
+        return json.loads(raw)
