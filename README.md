@@ -1,6 +1,6 @@
-# BBC News Mini Corpus API
+# BBC News Natural Language Query API
 
-A RESTful API based on the BBC News Dataset, supporting various category news queries and natural language query processing.
+A lightweight natural language news query tool that combines a BBC news corpus with AI models (Google Gemini or OpenAI ChatGPT) to enable semantic search through news articles.
 
 ## Key Features
 
@@ -22,219 +22,186 @@ This project uses the BBC News Dataset, which includes news articles in five mai
 
 Data source: `https://huggingface.co/datasets/hf-internal/bbc-text/resolve/main/bbc-text.csv`
 
-## Project Structure Diagram
+## Project Structure
 
 ```
 bbc-news-api/
-├── app.py              # Flask main application entry point
-├── routes.py           # API route handling logic
-├── db.py               # Database connection and query module
-├── chatgpt_model.py    # ChatGPT AI model integration
-├── gemini_model.py     # Gemini AI model integration
-├── requirements.txt    # Dependency package list
-├── .env                # Environment variable configuration file
-├── template.env        # Environment variable template
+├── app.py              # Flask application entry point
+├── db.py               # Database connection and query handling
+├── gemini_model.py     # Google Gemini API integration
+├── chatgpt_model.py    # OpenAI ChatGPT integration
+├── requirements.txt    # Project dependencies
+├── .env                # Environment variables (API keys)
+├── template.env        # Template for environment variables
 ├── README.md           # English documentation
 ├── README_ZH.md        # Chinese documentation
 │
-├── scripts/            # Helper scripts
-│   └── csv_to_sqlite.py    # Convert CSV to SQLite
+├── scripts/            
+│   └── csv_to_sqlite.py  # Converts CSV dataset to SQLite
 │
-├── static/             # Static resources
-│   ├── css/
-│   │   └── style.css       # Stylesheet
+├── static/            
 │   └── js/
-│       └── script.js       # Frontend interaction script
+│       └── main.js      # Frontend JavaScript
 │
-├── templates/          # HTML templates
-│   ├── index.html          # Main page/chat interface
-│   └── api.html            # API documentation page
+├── templates/         
+│   └── index.html      # Main web interface
 │
-└── data/               # Data folder (auto-created)
-    ├── bbc-news.csv        # Original CSV data
-    └── bbc_news.sqlite     # SQLite database
+└── data/              
+    ├── bbc-news.csv    # Original CSV dataset
+    └── bbc_news.sqlite # SQLite database
 ```
 
-## System Flow Diagram
+## System Architecture
 
-```
-User Request → Flask Application (app.py)
-    ↓
-Route Handling (routes.py) → Database Query (db.py) → SQLite Database
-    ↓                           ↑
-Natural Language Parsing ← Gemini AI Model (gemini_model.py)
-    ↓
-JSON Response → Frontend Display
+```mermaid
+graph TD
+    A[User] -->|Natural Language Query| B[Flask Web App]
+    B -->|Process Request| C[Query Processor]
+    C -->|SQL Query| D[SQLite Database]
+    D -->|Results| C
+    C -->|Parse NL Query| E{LLM Model}
+    E -->|Extract Category & Keywords| C
+    E -->|Switch Based on Config| F[Gemini API]
+    E -->|Switch Based on Config| G[OpenAI API]
+    C -->|JSON Response| B
+    B -->|Display Results| A
 ```
 
-## Environment Setup
+## Setup and Running
 
 ### Prerequisites
-
 - Python 3.8+
-- Internet connection (for downloading the dataset)
-- Gemini API Key (optional, for natural language query functionality)
+- API key for Google Gemini or OpenAI (depending on which LLM you want to use)
 
-### Installation Steps
+### Installation
 
-1. **Clone this repository**:
-
+1. Clone the repository:
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/yourusername/bbc-news-api.git
    cd bbc-news-api
    ```
 
-2. **Create and activate a virtual environment**:
-
+2. Create and activate a virtual environment:
    ```bash
    python -m venv venv
-   source venv/bin/activate  # On Windows use venv\Scripts\activate
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
    ```
 
-3. **Install dependencies**:
-
+3. Install dependencies:
    ```bash
    pip install -r requirements.txt
    ```
 
-4. **Configure environment variables**:
-
-   Copy `template.env` to `.env` and set your Gemini API Key (if you need natural language query functionality):
-
+4. Set up environment variables:
    ```bash
    cp template.env .env
-   # Then edit the .env file to add your API key
+   # Edit .env and add your API key(s)
    ```
 
-5. **Prepare data**:
-
+5. Prepare the data:
    ```bash
-   # Step 5: Prepare data
-   1. Download CSV: https://huggingface.co/datasets/hf-internal/bbc-text/resolve/main/bbc-text.csv
-   2. Rename the file to bbc-news.csv and place it in the data/ folder
-   3. Convert to SQLite
-      python scripts/csv_to_sqlite.py
+   # Ensure bbc-news.csv is in the data/ folder
+   python scripts/csv_to_sqlite.py
    ```
 
-## Running the Application
+6. Run the application:
+   ```bash
+   python app.py
+   ```
 
-Start the Flask application:
+The application will be available at http://localhost:5000
 
-```bash
-python app.py
+## API Endpoints
+
+### `/query` (POST)
+Process a natural language query using the configured LLM.
+
+**Request:**
+```json
+{
+  "query": "Show me tech news about Apple"
+}
 ```
 
-The application will run at http://localhost:5000.
+**Response:**
+```json
+{
+  "query": "Show me tech news about Apple",
+  "parsed": {
+    "category": "tech",
+    "keyword": "Apple"
+  },
+  "results": [
+    {
+      "category": "tech",
+      "text": "...[article content]..."
+    },
+    ...
+  ]
+}
+```
 
-## Using Natural Language Queries
+### `/news` (GET)
+Retrieve news articles with optional filtering.
 
-This system supports using natural language to query BBC news articles. These features can be accessed through the chat interface (http://localhost:5000/) or API endpoints.
+**Parameters:**
+- `category`: Filter by news category (business, entertainment, politics, sport, tech)
+- `keyword`: Filter by keyword in text
+- `page`: Page number (default: 1)
+- `limit`: Results per page (default: 20)
 
-### Available Natural Language Query Examples:
+**Response:**
+```json
+{
+  "page": 1,
+  "limit": 20,
+  "total_pages": 10,
+  "total": 200,
+  "data": [
+    {
+      "category": "tech",
+      "text": "...[article content]..."
+    },
+    ...
+  ]
+}
+```
 
-1. **Category-based queries**:
-   - "Find business news"
-   - "Show the latest political reports"
+### `/search` (GET)
+Simple keyword search in the news database.
 
-2. **Keyword-based queries**:
-   - "Find tech news about Apple"
-   - "Find sports news that mention football"
+**Parameters:**
+- `q`: Search query
+- `page`: Page number (default: 1)
+- `limit`: Results per page (default: 20)
 
-3. **Combined queries**:
-   - "Find business news discussing markets"
-   - "What entertainment news is there about movies?"
+**Response:**
+Same format as `/news` endpoint
 
-## Testing the API
+### `/system_status` (GET)
+Check system status and database availability.
 
-You can test the API in the following ways:
+**Response:**
+```json
+{
+  "db_exists": true,
+  "time": 1618123456.789
+}
+```
 
-### Using a Browser
+## LLM Integration
 
-Visit the chat interface: http://localhost:5000/
+The application can be configured to use either Google's Gemini or OpenAI's models by setting the `AI_MODEL_TYPE` environment variable in the `.env` file:
 
-### Using curl
+```
+AI_MODEL_TYPE=GEMINI  # or OPENAI
+GEMINI_API_KEY=your_api_key_here
+```
 
-1. **Test natural language queries**:
+## Example Queries
 
-   ```bash
-   curl -X POST http://localhost:5000/api/query \
-     -H "Content-Type: application/json" \
-     -d '{"query":"Find tech news about Apple"}'
-   ```
-
-2. **Get news list**:
-
-   ```bash
-   curl http://localhost:5000/api/news?category=tech&limit=10
-   ```
-
-3. **Get specific news details**:
-
-   ```bash
-   curl http://localhost:5000/api/news/1
-   ```
-
-4. **Search news**:
-
-   ```bash
-   curl http://localhost:5000/api/search?q=market
-   ```
-
-5. **Check system status**:
-   ```bash
-   curl http://localhost:5000/api/system_status
-   ```
-
-## API Endpoint List
-
-### News Queries
-
-- `GET /api/news` - Get news list (supports pagination and category filtering)
-  - Parameters: `page`, `limit`, `category`, `keyword`
-- `GET /api/news/{news_id}` - Get specific news details
-
-### Search
-
-- `GET /api/search?q={query}` - Basic text search
-  - Parameters: `q`, `page`, `limit`
-- `POST /api/query` - Natural language query
-  - Request body: `{"query": "natural language query text"}`
-
-### System
-
-- `GET /api/debug` - Debug information
-- `GET /api/system_status` - Get system status
-
-## Main Module Functions
-
-- **app.py**: Flask application entry point, initializes services and routes
-- **routes.py**: Handles all API routes and request logic
-- **db.py**: Database connection and query processing, includes caching mechanism
-- **gemini_model.py**: Integration with Gemini AI model, processes natural language query parsing
-
-## Extension Suggestions
-
-1. Add more NLP features, such as article summaries or sentiment analysis
-2. Implement more advanced search features, such as similarity search
-3. Add user authentication and authorization
-4. Add support for more news sources
-5. Add periodic data update mechanism
-
-## Troubleshooting
-
-1. **Database file does not exist**:
-   - Make sure you've downloaded the CSV file and placed it in the data/ folder
-   - Run `python scripts/csv_to_sqlite.py` to convert the CSV to SQLite
-   - Confirm that the `data/bbc_news.sqlite` file exists
-
-2. **Natural language query functionality is unavailable**:
-   - Confirm that the `.env` file exists and contains a valid `GEMINI_API_KEY`
-   - Check API key limitations and network connectivity
-
-3. **Application startup error**:
-   - Check that all dependencies are correctly installed
-   - View logs for detailed error information
-   
-4. **Query returns empty results**:
-   - Confirm that the database has been correctly created and contains data
-   - Use the `api/system_status` endpoint to check system status
+- "Find tech news about mobile phones"
+- "Show me sports articles about football"
+- "What entertainment news mentions movies?"
+- "Find business news from 2021"
+- "Show me political news about elections"
