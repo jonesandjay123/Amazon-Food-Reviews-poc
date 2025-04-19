@@ -29,8 +29,9 @@ document.getElementById("send").onclick = async () => {
   if (r.results?.length) {
     r.results.forEach(n => {
       const cat = n.category || "None";
+      // limit the preview to 60 characters
       const preview = n.text?.substring(0, 60) || "(No content)";
-      log.textContent += `\n• [${cat}] ${preview}`;
+      log.textContent += `\n• [${cat}] ${preview}...`;
     });
   } else {
     log.textContent += `\n⚠️ No news found`;

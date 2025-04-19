@@ -1,6 +1,5 @@
 # app.py
 import os, time, re
-from typing import Optional
 from flask import Flask, render_template, request, jsonify
 from db import execute, DB_PATH
 
@@ -37,29 +36,6 @@ def naive_parse(query: str) -> dict:
     kw = words[-1].rstrip('s') if words else None
     return {"keyword": kw}
 
-@app.route("/news")
-def news():
-    page     = int(request.args.get("page", 1))
-    limit    = int(request.args.get("limit", 20))
-    category = request.args.get("category")
-    keyword  = request.args.get("keyword")
-    offset   = (page - 1) * limit
-
-    sql, p = build_query(category, keyword, limit, offset)
-    rows   = execute(sql, p)
-
-    count_sql, cp = build_query(category, keyword, 1, 0)
-    total  = execute(count_sql.replace("SELECT *", "SELECT COUNT(*) AS c"), cp)[0]["c"]
-
-    return jsonify({"page": page, "limit": limit,
-                    "total_pages": (total+limit-1)//limit,
-                    "total": total, "data": rows})
-
-@app.route("/search")
-def search():
-    q = request.args.get("q")
-    if not q: return jsonify({"error":"q param required"}), 400
-    return news()
 
 # --- /query endpoint ---
 @app.route("/query", methods=["POST"])

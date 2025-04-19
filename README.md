@@ -22,6 +22,41 @@ This project uses the BBC News Dataset, which includes news articles in five mai
 
 Data source: `https://huggingface.co/datasets/hf-internal/bbc-text/resolve/main/bbc-text.csv`
 
+## 🔍 Quick Demo – Keyword‑Only Version (Baseline before LangChain)
+
+The current implementation shows how far we can go **without** multi‑step
+retrieval or an agent.  
+It does exactly one thing:
+
+1. **LLM extracts one keyword** from the user's natural‑language query  
+2. **SQL `LIKE`** searches the BBC News corpus for that keyword  
+3. Returns the first 10 matches, showing each article's *category* tag and
+   the first few characters of its content
+
+### How to run
+
+```bash
+# one‑time: convert CSV to SQLite  (skip if already done)
+python scripts/csv_to_sqlite.py
+
+# launch server
+python app.py
+```
+
+Open http://localhost:5000, type a query, press Send.
+
+#### Example queries
+
+| Input | LLM‑extracted keyword  |
+|-------|----------------------|
+| Show me sports articles about football | football |
+| tech news about Apple | apple |
+| articles about foods | food (plural → singular) |
+| latest news | (no keyword) → shows latest 10 articles |
+
+When no article contains the keyword, you'll see:
+⚠️ No news found.
+
 ## Project Structure
 
 ```
