@@ -171,3 +171,90 @@ RAG（檢索增強生成）實現顯著提升了查詢能力，相比於基準�
 - **關鍵字高亮**：比較 baseline keyword 或 RAG 原始 query 的匹配
 - **相似度 score**：每段被選中的內容都有信心程度評分
 - **Gemini summary**：3 句話快速總結相關信息
+
+## 技術比較：SQLite vs. RAG 向量儲存
+
+### Q1：導入 RAG 後，資料儲存格式跟 SQLite 有什麼差別？
+
+| 架構 | 使用資料形式 | 查詢方式 | 優點 | 缺點 |
+|--------------|-------------|--------------|------------|---------------|
+| 🔍 SQLite（Baseline）| 一筆新聞一筆 row（用 text LIKE '%keyword%' 搜）| 關鍵字查詢 | 快、簡單、低成本 | 無法理解語意 |
+| 🧠 FAISS 向量庫（RAG）| 文章先分段 → 每段變成向量並儲存於 FAISS | 語意搜尋（Similarity Search）| 能理解語意 → 找出關聯段落 | 初始建立較麻煩、需 GPU 支援 LLM |
+
+#### 原理與流程比較：
+
+**Baseline（原來的方式）：**
+- 把 CSV ➜ 存成 SQLite
+- 每篇文章是一筆記錄
+- 查詢時 LLM 只是負責擷取關鍵字
+- 最後 SQL 查詢：
+  ```sql
+  SELECT * FROM news WHERE text LIKE '%apple%'
+  ```
+- 限於 exact match，無法找到例如 "iPhone", "digital rights" 這種相關內容
+
+**RAG（導入後流程）：**
+- 把 CSV 每篇文章 → 拆成 400 字的段落
+  - 用 RecursiveCharacterTextSplitter
+- 每段變成一個向量（用 Gemini embedding）
+- 存到 FAISS 向量庫
+- 查詢時輸入 query 也會被轉成向量 → 用相似度（cosine）找出前 K 段最相關文本
+- 這時 LLM 再根據這幾段段落總結出答案
+- 過程：語意對齊 → 再總結
+
+`build_vectors.py` 是一個「先做向量分段＋嵌入」的 script，幫你準備：
+- 段落（分割後的 text）
+- category + rowid
+- Gemini embedding vector
+- 再存到 FAISS 的 .faiss + .pkl 組合中
+
+### Q2：目前這個 feature/langchain-rag 分支是否同時支援兩種架構？
+
+是的！系統完美設計，通過簡單的切換即可展示兩種架構。
+
+**模式切換對應：**
+
+| 架構 | 現在的系統 | 說明 |
+|--------------|----------------|---------|
+| 左圖：Current Architecture | ✅ 不打勾 Use RAG 時執行 | - 使用 /query API<br>- LLM 提取 keyword<br>- 查 SQLite<br>- 直接用 LIKE 找資料 |
+| 右圖：LangChain RAG | ✅ 打勾 Use RAG 時執行 | - 使用 /rag_query API<br>- LangChain 執行向量檢索<br>- Gemini 摘要來自語意段落 |
+
+實現中還加入了分數、highlight、段落展開等功能，讓 RAG 版本的查詢品質顯著提升，完全達成右側架構的精神。
+
+## 單步檢索 vs. 多步檢索
+
+目前的實現使用了**單步檢索（Single-step Retrieval）RAG**方法，有時也被稱為「RAG-Lite」、「Vanilla RAG」或「Basic RAG」。
+
+### 目前架構：單步檢索 RAG
+
+工作流程非常直接：
+1. 使用者輸入 query（自然語言）
+2. 將 query 做一次 embedding（→ 向量）
+3. 到向量資料庫中搜尋 top-k 相似段落（similarity_search_with_score）
+4. 把這些段落串起來，丟給 LLM 總結 → 產出答案
+
+### 與多步檢索的比較
+
+| 類型 | 單步檢索 RAG（目前） | 多步檢索 RAG（LangChain Agent） |
+|------|----------------------|--------------------------------|
+| 查詢次數 | 1 次向量查詢 | 多次（甚至交錯不同資料源） |
+| 條件邏輯 | 無條件判斷，一次性完成 | LLM 根據回傳內容再做判斷、重查 |
+| 計劃能力 | 不具備 | 可用 Agent Planner 拆解問題 |
+| 常見技術 | similarity_search() + prompt | AgentExecutor, RetrievalPlanner, Tool Calling, LangGraph |
+| 範例情境 | 單一 QA、摘要、FAQ 回答 | 複雜指令，如：「先找公司財報，再查 CEO 對此評論」 |
+
+### 目前系統優勢
+
+- ✅ 是標準的單步 RAG 架構
+- ✅ 效果已經非常不錯，適合用於固定主題資料集（如新聞、FAQ、法條等）
+- ✅ 架構清晰，日後要升級成多步只需要加 LangChain Agents 或 LangGraph
+
+### 未來升級至多步檢索的路徑
+
+可能的方向包括：
+- 🔁 自動判斷「資料不足」時自動回查（如您的圖右側所示）
+- 🔨 使用 LangChain 的 PlanAndExecute agent
+- 📚 查詢不同資料來源（例如一邊查向量資料庫，一邊查 API 回應）
+- 🧠 結合工具鏈：Embedding + SQL + Web Search（複合 Retrieval）
+
+對於像「幫我查 Apple 官司歷史、再幫我比對最近是否有新案件」這樣的複雜查詢，將需要多步方法。
