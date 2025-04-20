@@ -144,84 +144,6 @@ graph TD
 
 應用程式將在 http://localhost:5000 上可用
 
-## API 端點
-
-### `/query` (POST)
-使用配置的 LLM 處理自然語言查詢。
-
-**請求：**
-```json
-{
-  "query": "顯示關於蘋果的科技新聞"
-}
-```
-
-**回應：**
-```json
-{
-  "query": "顯示關於蘋果的科技新聞",
-  "parsed": {
-    "category": "tech",
-    "keyword": "Apple"
-  },
-  "results": [
-    {
-      "category": "tech",
-      "text": "...[文章內容]..."
-    },
-    ...
-  ]
-}
-```
-
-### `/news` (GET)
-獲取新聞文章，可選擇性過濾。
-
-**參數：**
-- `category`：按新聞類別過濾（business, entertainment, politics, sport, tech）
-- `keyword`：按文本中的關鍵字過濾
-- `page`：頁碼（預設：1）
-- `limit`：每頁結果數（預設：20）
-
-**回應：**
-```json
-{
-  "page": 1,
-  "limit": 20,
-  "total_pages": 10,
-  "total": 200,
-  "data": [
-    {
-      "category": "tech",
-      "text": "...[文章內容]..."
-    },
-    ...
-  ]
-}
-```
-
-### `/search` (GET)
-在新聞資料庫中進行簡單的關鍵字搜索。
-
-**參數：**
-- `q`：搜索查詢
-- `page`：頁碼（預設：1）
-- `limit`：每頁結果數（預設：20）
-
-**回應：**
-與 `/news` 端點格式相同
-
-### `/system_status` (GET)
-檢查系統狀態和資料庫可用性。
-
-**回應：**
-```json
-{
-  "db_exists": true,
-  "time": 1618123456.789
-}
-```
-
 ## LLM 整合
 
 應用程式可以通過在 `.env` 文件中設置 `AI_MODEL_TYPE` 環境變數，配置使用 Google Gemini 或 OpenAI 的模型：
@@ -231,10 +153,21 @@ AI_MODEL_TYPE=GEMINI  # 或 OPENAI
 GOOGLE_API_KEY=your_api_key_here
 ```
 
-## 查詢範例
+## RAG 測試範例
 
-- "尋找關於手機的科技新聞"
-- "顯示關於足球的體育文章"
-- "有哪些提到電影的娛樂新聞？"
-- "尋找 2021 年的商業新聞"
-- "顯示關於選舉的政治新聞"
+RAG（檢索增強生成）實現顯著提升了查詢能力，相比於基準關鍵字搜索。以下是一些展示改進效果的查詢示例：
+
+| 查詢語句 | 預期差異 |
+|-------|---------------------|
+| Apple lawsuits | Baseline 幾乎找不到；RAG 能找到有關 patent cases / court 的段落並總結 |
+| Why did UK vote for Brexit | Baseline 0~1 筆；RAG 能抓到 referendum, EU exit, June 2016 等關鍵段落 |
+| phone maker recall scandal | Baseline 無結果；RAG 會返回 battery recall / Samsung Galaxy 相關文章 |
+| budget deficit reduction plan | RAG 可找到 chancellor budget speech、Baseline 命中率低 |
+| online privacy concerns | 可觀察 RAG 摘要如何歸納 data protection / children online safety |
+
+測試應用程式時，勾選/不勾選「Use RAG」選項，同時輸入以上查詢，體驗：
+
+- **命中率提升**：RAG 能抓到語意相關文章，超越關鍵字比對
+- **關鍵字高亮**：比較 baseline keyword 或 RAG 原始 query 的匹配
+- **相似度 score**：每段被選中的內容都有信心程度評分
+- **Gemini summary**：3 句話快速總結相關信息

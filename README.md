@@ -146,84 +146,6 @@ graph TD
 
 The application will be available at http://localhost:5000
 
-## API Endpoints
-
-### `/query` (POST)
-Process a natural language query using the configured LLM.
-
-**Request:**
-```json
-{
-  "query": "Show me tech news about Apple"
-}
-```
-
-**Response:**
-```json
-{
-  "query": "Show me tech news about Apple",
-  "parsed": {
-    "category": "tech",
-    "keyword": "Apple"
-  },
-  "results": [
-    {
-      "category": "tech",
-      "text": "...[article content]..."
-    },
-    ...
-  ]
-}
-```
-
-### `/news` (GET)
-Retrieve news articles with optional filtering.
-
-**Parameters:**
-- `category`: Filter by news category (business, entertainment, politics, sport, tech)
-- `keyword`: Filter by keyword in text
-- `page`: Page number (default: 1)
-- `limit`: Results per page (default: 20)
-
-**Response:**
-```json
-{
-  "page": 1,
-  "limit": 20,
-  "total_pages": 10,
-  "total": 200,
-  "data": [
-    {
-      "category": "tech",
-      "text": "...[article content]..."
-    },
-    ...
-  ]
-}
-```
-
-### `/search` (GET)
-Simple keyword search in the news database.
-
-**Parameters:**
-- `q`: Search query
-- `page`: Page number (default: 1)
-- `limit`: Results per page (default: 20)
-
-**Response:**
-Same format as `/news` endpoint
-
-### `/system_status` (GET)
-Check system status and database availability.
-
-**Response:**
-```json
-{
-  "db_exists": true,
-  "time": 1618123456.789
-}
-```
-
 ## LLM Integration
 
 The application can be configured to use either Google's Gemini or OpenAI's models by setting the `AI_MODEL_TYPE` environment variable in the `.env` file:
@@ -233,10 +155,21 @@ AI_MODEL_TYPE=GEMINI  # or OPENAI
 GOOGLE_API_KEY=your_api_key_here
 ```
 
-## Example Queries
+## RAG Testing Examples
 
-- "Find tech news about mobile phones"
-- "Show me sports articles about football"
-- "What entertainment news mentions movies?"
-- "Find business news from 2021"
-- "Show me political news about elections"
+The RAG (Retrieval-Augmented Generation) implementation significantly improves query capabilities compared to the baseline keyword search. Below are some example queries to demonstrate the improvements:
+
+| Query | Expected Difference |
+|-------|---------------------|
+| Apple lawsuits | Baseline finds almost nothing; RAG can find and summarize passages about patent cases / court |
+| Why did UK vote for Brexit | Baseline returns 0-1 results; RAG captures key passages about referendum, EU exit, June 2016 |
+| phone maker recall scandal | Baseline has no results; RAG returns articles about battery recall / Samsung Galaxy |
+| budget deficit reduction plan | RAG finds chancellor budget speech articles while Baseline has low hit rate |
+| online privacy concerns | Observe how RAG summarizes content about data protection / children online safety |
+
+When testing the application, toggle the "Use RAG" checkbox on/off while entering these queries to experience:
+
+- **Improved hit rate**: RAG captures semantically relevant articles beyond keyword matching
+- **Keyword highlighting**: Compare baseline keyword vs. RAG original query matches
+- **Similarity scores**: Each selected passage includes a confidence score
+- **Gemini summary**: Quick 3-sentence summary of the relevant information
