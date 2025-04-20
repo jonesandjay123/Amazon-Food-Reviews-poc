@@ -7,9 +7,9 @@ MODEL_NAME = "gemini-2.0-flash"
 
 class GeminiModel:
     def __init__(self) -> None:
-        key = os.getenv("GEMINI_API_KEY")
+        key = os.getenv("GOOGLE_API_KEY")
         if not key:
-            raise RuntimeError("GEMINI_API_KEY not set")
+            raise RuntimeError("GOOGLE_API_KEY not set")
         self.client = genai.Client(api_key=key)
 
     def parse(self, query: str) -> dict:

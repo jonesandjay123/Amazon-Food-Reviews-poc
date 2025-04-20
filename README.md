@@ -230,7 +230,7 @@ The application can be configured to use either Google's Gemini or OpenAI's mode
 
 ```
 AI_MODEL_TYPE=GEMINI  # or OPENAI
-GEMINI_API_KEY=your_api_key_here
+GOOGLE_API_KEY=your_api_key_here
 ```
 
 ## Example Queries

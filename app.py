@@ -1,5 +1,7 @@
 # app.py
 import os, time, re
+from rag_model import RAGModel
+rag_model = RAGModel()
 from flask import Flask, render_template, request, jsonify
 from db import execute, DB_PATH
 
@@ -36,6 +38,16 @@ def naive_parse(query: str) -> dict:
     kw = words[-1].rstrip('s') if words else None
     return {"keyword": kw}
 
+# add after existing /query
+@app.route("/rag_query", methods=["POST"])
+def rag_query():
+    data = request.get_json(force=True)
+    user_q = data.get("query", "").strip()
+    if not user_q:
+        return jsonify({"error": "query field required"}), 400
+
+    result = rag_model.ask(user_q)
+    return jsonify(result)
 
 # --- /query endpoint ---
 @app.route("/query", methods=["POST"])

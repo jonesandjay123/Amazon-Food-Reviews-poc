@@ -228,7 +228,7 @@ graph TD
 
 ```
 AI_MODEL_TYPE=GEMINI  # 或 OPENAI
-GEMINI_API_KEY=your_api_key_here
+GOOGLE_API_KEY=your_api_key_here
 ```
 
 ## 查詢範例
