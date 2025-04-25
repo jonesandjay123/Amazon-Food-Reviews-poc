@@ -1,97 +1,82 @@
-# app.py  ── 支援 ❶Azure-OpenAI-RAG (預設) ❷Gemini (可選)
-import os, time, re
-from dotenv import load_dotenv
-load_dotenv()
+"""
+Convert BBC News CSV → FAISS vector index
 
-from rag_model import RAGModel
-rag_model = RAGModel()                     # ← RAG 一律可用
+執行一次即可：
+    python scripts/build_vectors.py
+"""
 
-from flask import Flask, render_template, request, jsonify
-from db import execute, DB_PATH
+import os, json, gzip
+from pathlib import Path
 
-# ---------- 依環境變數決定要不要載 AI-Parse ---------- #
-AI_MODEL_TYPE = os.getenv("AI_MODEL_TYPE", "OPENAI").upper()
-ai_model = None
+import pandas as pd
+from dotenv import load_dotenv; load_dotenv()
 
-if AI_MODEL_TYPE == "GEMINI":
-    try:
-        from gemini_model import GeminiModel      # 只有 parse 用
-        ai_model = GeminiModel()
-        print("✅ Gemini model loaded for SQL parse")
-    except Exception as e:
-        print("⚠️  Gemini init failed, fallback to naive parse:", e)
-else:                             # OPENAI / CHATGPT
-    try:
-        from chatgpt_model import ChatGPTModel    # 只有 parse 用
-        ai_model = ChatGPTModel(temperature=0.0)  # 低溫方便規則化輸出
-        print("✅ ChatGPT model loaded for SQL parse")
-    except Exception as e:
-        print("⚠️  ChatGPT init failed, fallback to naive parse:", e)
+from azure.identity import CertificateCredential
+from langchain_openai import AzureOpenAIEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 
-# ---------- Flask app ---------- #
-app = Flask(__name__)
+# ---------- Azure OpenAI 共用 ---------- #
 
-@app.route("/")
-def home():
-    return render_template("index.html")
+def _get_azure_token() -> str:
+    scope = "https://cognitiveservices.azure.com/.default"
+    credential = CertificateCredential(
+        tenant_id=os.getenv("TENANT_ID"),
+        client_id=os.getenv("CLIENT_ID"),
+        certificate_path=os.getenv("CERTIFICATE_PATH", "Terra.pem"),
+    )
+    return credential.get_token(scope).token
 
-# --- Query Builder (SQL) ---
-def build_query(keyword: str | None, limit: int, offset: int) -> tuple[str, tuple]:
-    if keyword:
-        sql = "SELECT * FROM news WHERE text LIKE ? ORDER BY rowid DESC LIMIT ? OFFSET ?"
-        return sql, (f"%{keyword}%", limit, offset)
-    sql = "SELECT * FROM news ORDER BY rowid DESC LIMIT ? OFFSET ?"
-    return sql, (limit, offset)
+AZURE_KW = dict(
+    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    openai_api_version="2024-02-15-preview",
+    azure_ad_token=_get_azure_token(),
+)
 
-# --- 極簡 fallback parse ---
-def naive_parse(query: str) -> dict:
-    words = re.findall(r"\b[a-z]{4,}\b", query.lower())
-    kw = words[-1].rstrip('s') if words else None
-    return {"keyword": kw}
+EMBED_DEPLOYMENT = os.getenv("AZURE_OPENAI_EMBEDDING", "text-embedding-3-small")
 
-# ---------- RAG 端點 ----------
-@app.route("/rag_query", methods=["POST"])
-def rag_query():
-    data = request.get_json(force=True)
-    user_q = data.get("query", "").strip()
-    if not user_q:
-        return jsonify({"error": "query field required"}), 400
+# ---------- 讀取 BBC CSV ---------- #
 
-    result = rag_model.ask(user_q)
-    return jsonify(result)
+DATA_DIR  = Path("data")
+VEC_DIR   = DATA_DIR / "bbc_faiss"
+CSV_FILE  = DATA_DIR / "bbc_news.csv"
+CSV_GZ    = DATA_DIR / "bbc_news.csv.gz"     # 若你存成壓縮檔
 
-# ---------- 傳統 SQL 端點 ----------
-@app.route("/query", methods=["POST"])
-def query():
-    data = request.get_json(force=True)
-    user_q = data.get("query", "").strip()
-    if not user_q:
-        return jsonify({"error": "query field required"}), 400
+print("🔄  Loading raw articles …")
 
-    # 先嘗試 AI parse（若 model 存在且有 parse 方法）
-    try:
-        parsed = ai_model.parse(user_q) if (ai_model and hasattr(ai_model, "parse")) else {}
-    except Exception as e:
-        print("⚠️  AI parse failed, fallback to naive:", e)
-        parsed = {}
+if CSV_FILE.exists():
+    df = pd.read_csv(CSV_FILE)
+elif CSV_GZ.exists():
+    with gzip.open(CSV_GZ, "rt", encoding="utf-8") as f:
+        df = pd.read_csv(f)
+else:
+    raise FileNotFoundError("Neither bbc_news.csv nor bbc_news.csv.gz found in /data")
 
-    if not parsed.get("keyword"):
-        parsed = naive_parse(user_q)
+docs = df["text"].fillna("").tolist()
 
-    kw = parsed.get("keyword")
-    sql, params = build_query(kw, 10, 0)
-    rows = execute(sql, params)
+# ---------- 切 Chunk ---------- #
 
-    return jsonify({
-        "query": user_q,
-        "parsed": parsed,
-        "results": rows
-    })
+splitter = RecursiveCharacterTextSplitter(
+    chunk_size=800,
+    chunk_overlap=100,
+    length_function=len,
+)
+chunks = splitter.create_documents(docs)
 
-@app.route("/system_status")
-def status():
-    return jsonify({"db_exists": DB_PATH.exists(), "time": time.time()})
+# ---------- 產生向量 ---------- #
 
-if __name__ == "__main__":
-    # 預設 5000；如需改 port 用環境變數或這裡直接改
-    app.run(debug=True, port=5000)
+print("🧠  Encoding with Azure OpenAI embeddings …")
+emb = AzureOpenAIEmbeddings(
+    azure_deployment=EMBED_DEPLOYMENT,
+    **AZURE_KW,
+)
+
+db = FAISS.from_documents(documents=chunks, embedding=emb)
+
+# ---------- 儲存 ---------- #
+
+print("💾  Saving FAISS index …")
+VEC_DIR.mkdir(parents=True, exist_ok=True)
+db.save_local(str(VEC_DIR))
+
+print("✅  Done!  Index stored at", VEC_DIR)
