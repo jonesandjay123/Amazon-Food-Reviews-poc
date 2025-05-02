@@ -241,112 +241,113 @@ GEMINI_API_KEY=your_api_key_here
 
 - 
 ```
-import React, { useEffect, useRef, useState, useContext } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import io from 'socket.io-client';
 import { v4 as uuidv4 } from 'uuid';
 import * as RestApi from '@/RestApi';
-import WidgetContext from '@/context/widgetContext';
 import './GptComponent.css';
 
 /**
- * 這是新版 GPTComponent：
- * ‑ 保留原先純前端的新樣式
- * ‑ 嵌入精簡版 WebSocket 連線（源自舊 ChatComponent）
- * ‑ 目前僅處理基本訊息收發 & debug mode，可逐步擴充其它事件
+ * GPTComponent – 保留新 UI 風格並加入最基礎 WebSocket 連線能力。
+ * 目前僅串接 authenticate‑llm / welcome message / log / error / allow_user_input 事件，
+ *   能讓你快速驗證與後端 LLM 的往返；日後可依需要擴充 clarify、result、image 等事件。
  */
 const GptComponent = () => {
-  /** ---------- 狀態 ---------- */
+  /* -------------------- State -------------------- */
   const [message, setMessage] = useState('');
   const [chatMessages, setChatMessages] = useState([]); // { text, isUser }
   const [isAnalysing, setIsAnalysing] = useState(false);
   const [allowUserInput, setAllowUserInput] = useState(true);
-  const [debugMode, setDebugMode] = useState(true);
 
-  /** ---------- WebSocket ---------- */
+  /* -------------------- WebSocket -------------------- */
   const socketRef = useRef(null);
   const sessionId = useRef(null);
 
-  // 從 WidgetContext 取 initialPayload（可選，沒有就 undefined）
-  const { dataQueryPayload: initialPayload } = useContext(WidgetContext) || {};
-
-  /** 建立與 LLM 的 socket 連線 */
   useEffect(() => {
-    const socket = io();
+    let mounted = true;
 
-    // 1⃣️ 先做 auth
-    RestApi.getADFsToken().then(token => {
-      socket.emit('authenticate-llm', { auth: token });
-    });
+    /** 建立 socket 連線 + 認證 */
+    RestApi.getADFsToken().then((token) => {
+      if (!mounted) return;
+      const socket = io(RestApi.getMinionSocketUrl(), { auth: token });
+      socketRef.current = socket;
 
-    // 2⃣️ 認證失敗
-    socket.on('authentication-error', recv => {
-      setChatMessages(recv.data.map(t => ({ text: t, isUser: false })));
-      socket.close();
-    });
-
-    // 3⃣️ 認證成功 & welcome message
-    socket.on('welcome message', recv => {
-      sessionId.current = recv['session_id'];
-      setChatMessages(prev => [
-        ...prev,
-        ...recv.data.map(t => ({ text: t, isUser: false }))
-      ]);
-      // 若有 initialPayload，交給後端分析
-      if (initialPayload) {
-        socket.emit('analyze_payload', { text: JSON.stringify(initialPayload), session_id: sessionId.current });
-      }
-    });
-
-    // 4⃣️ 一般日誌輸出
-    socket.on('log', data => {
-      setChatMessages(prev => [
-        ...prev,
-        ...data.data.map(t => ({ text: t, isUser: false }))
-      ]);
-    });
-
-    // 5⃣️ 允許再次輸入
-    socket.on('allow_user_input', () => setAllowUserInput(true));
-
-    socketRef.current = socket;
-
-    // 定期刷新 token（4 分鐘）
-    const tokenTimer = setInterval(() => {
-      RestApi.getADFsToken().then(token => {
-        socket.emit('update-token', { token, session_id: sessionId.current });
+      /* 認證錯誤 */
+      socket.on('authentication-error', (recv) => {
+        setChatMessages(recv.data.map((t) => ({ text: t, isUser: false })));
+        socket.close();
       });
-    }, 240000);
+
+      /* 認證成功 */
+      socket.on('welcome message', (recv) => {
+        sessionId.current = recv['session_id'];
+        setChatMessages((prev) => [
+          ...prev,
+          ...recv.data.map((t) => ({ text: t, isUser: false })),
+        ]);
+      });
+
+      /* 一般 log 訊息 */
+      socket.on('log', (data) => {
+        setChatMessages((prev) => [
+          ...prev,
+          ...data.data.map((t) => ({ text: t, isUser: false })),
+        ]);
+        setIsAnalysing(false);
+      });
+
+      /* 錯誤 */
+      socket.on('error', (data) => {
+        setChatMessages((prev) => [
+          ...prev,
+          { text: data.data, isUser: false },
+        ]);
+        setIsAnalysing(false);
+      });
+
+      /* 允許再次輸入 */
+      socket.on('allow_user_input', () => {
+        setAllowUserInput(true);
+        setIsAnalysing(false);
+      });
+
+      /* 定期刷新 token (4 min) */
+      const timer = setInterval(() => {
+        RestApi.getADFsToken().then((newToken) => {
+          socket.emit('update-token', { token: newToken, session_id: sessionId.current });
+        });
+      }, 240000);
+
+      /* 清理 */
+      socket.on('disconnect', () => clearInterval(timer));
+    });
 
     return () => {
-      clearInterval(tokenTimer);
-      socket.close();
+      mounted = false;
+      socketRef.current?.close();
     };
-  }, [initialPayload]);
+  }, []);
 
-  /** 發送文字訊息至後端 */
-  const sendMessage = (text) => {
+  /* -------------------- Helpers -------------------- */
+  const emitUserMessage = (text) => {
     if (!socketRef.current) return;
     socketRef.current.emit('message', {
       query: text,
-      debug_mode: debugMode,
-      session_id: sessionId.current
+      session_id: sessionId.current,
     });
   };
 
-  /** ---------- UI 事件 ---------- */
+  /* -------------------- UI handlers -------------------- */
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!message.trim()) return;
 
-    // 立刻把使用者訊息 push 到畫面
-    setChatMessages(prev => [...prev, { text: message, isUser: true }]);
+    // 將使用者訊息 push 到畫面
+    setChatMessages((prev) => [...prev, { text: message, isUser: true }]);
     setIsAnalysing(true);
     setAllowUserInput(false);
-    const userText = message;
+    emitUserMessage(message);
     setMessage('');
-
-    // 發送到後端
-    sendMessage(userText);
   };
 
   const handleKeyDown = (e) => {
@@ -356,44 +357,15 @@ const GptComponent = () => {
     }
   };
 
-  const handleStopGeneration = () => {
-    socketRef.current?.emit('stop_generation');
-    setAllowUserInput(true);
-    setIsAnalysing(false);
-  };
-
-  /** 從後端接收新訊息時，isAnalysing 結束 */
-  useEffect(() => {
-    if (!socketRef.current) return;
-    const socket = socketRef.current;
-    const onApiResult = (data) => {
-      setChatMessages(prev => [...prev, { text: data.data ?? data.text ?? '[no‑msg]', isUser: false }]);
-      setIsAnalysing(false);
-    };
-    socket.on('result', onApiResult);
-    socket.on('error', onApiResult);
-
-    return () => {
-      socket.off('result', onApiResult);
-      socket.off('error', onApiResult);
-    };
-  }, []);
-
-  /** ---------- Render ---------- */
+  /* -------------------- Render -------------------- */
   return (
     <div className="gpt-component">
       <div className="gpt-header">
         <div className="gpt-title">GPT Component</div>
-        <div className="gpt-actions">
-          <button className="action-button close-button" onClick={handleStopGeneration}>✕</button>
-        </div>
       </div>
 
       <div className="gpt-tabs">
         <div className="gpt-tab gpt-tab-active">Chat</div>
-        <div className="gpt-tab" onClick={() => setDebugMode(!debugMode)}>
-          Debug&nbsp;{debugMode ? 'ON' : 'OFF'}
-        </div>
       </div>
 
       <div className="gpt-content">
@@ -402,21 +374,25 @@ const GptComponent = () => {
             <div className="gpt-empty-state">
               <div className="gpt-stars">✨</div>
               <div className="gpt-greeting">
-                <h2>Hi User, I'm <span className="gpt-highlight">GPT Component</span>.</h2>
+                <h2>
+                  Hi User, I'm <span className="gpt-highlight">GPT Component</span>.
+                </h2>
                 <p>Ask me anything</p>
               </div>
             </div>
           )}
 
-          {chatMessages.map((msg, idx) => (
-            <div key={idx} className={`gpt-message ${msg.isUser ? 'gpt-user-message' : 'gpt-ai-message'}`}>
+          {chatMessages.map((msg, index) => (
+            <div key={index} className={`gpt-message ${msg.isUser ? 'gpt-user-message' : 'gpt-ai-message'}`}>
               {msg.text}
             </div>
           ))}
 
           {isAnalysing && (
             <div className="analysing">
-              <div className="analysing-icon"><span style={{ color: '#fff' }}>✨</span></div>
+              <div className="analysing-icon">
+                <span style={{ color: 'white' }}>✨</span>
+              </div>
               <div className="analysing-text">Analysing...</div>
             </div>
           )}
