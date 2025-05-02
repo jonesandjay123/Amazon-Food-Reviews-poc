@@ -238,3 +238,220 @@ GEMINI_API_KEY=your_api_key_here
 - "有哪些提到電影的娛樂新聞？"
 - "尋找 2021 年的商業新聞"
 - "顯示關於選舉的政治新聞"
+
+- 
+```
+import React, { useEffect, useRef, useState, useContext } from 'react';
+import io from 'socket.io-client';
+import { v4 as uuidv4 } from 'uuid';
+import * as RestApi from '@/RestApi';
+import WidgetContext from '@/context/widgetContext';
+import './GptComponent.css';
+
+/**
+ * 這是新版 GPTComponent：
+ * ‑ 保留原先純前端的新樣式
+ * ‑ 嵌入精簡版 WebSocket 連線（源自舊 ChatComponent）
+ * ‑ 目前僅處理基本訊息收發 & debug mode，可逐步擴充其它事件
+ */
+const GptComponent = () => {
+  /** ---------- 狀態 ---------- */
+  const [message, setMessage] = useState('');
+  const [chatMessages, setChatMessages] = useState([]); // { text, isUser }
+  const [isAnalysing, setIsAnalysing] = useState(false);
+  const [allowUserInput, setAllowUserInput] = useState(true);
+  const [debugMode, setDebugMode] = useState(true);
+
+  /** ---------- WebSocket ---------- */
+  const socketRef = useRef(null);
+  const sessionId = useRef(null);
+
+  // 從 WidgetContext 取 initialPayload（可選，沒有就 undefined）
+  const { dataQueryPayload: initialPayload } = useContext(WidgetContext) || {};
+
+  /** 建立與 LLM 的 socket 連線 */
+  useEffect(() => {
+    const socket = io();
+
+    // 1⃣️ 先做 auth
+    RestApi.getADFsToken().then(token => {
+      socket.emit('authenticate-llm', { auth: token });
+    });
+
+    // 2⃣️ 認證失敗
+    socket.on('authentication-error', recv => {
+      setChatMessages(recv.data.map(t => ({ text: t, isUser: false })));
+      socket.close();
+    });
+
+    // 3⃣️ 認證成功 & welcome message
+    socket.on('welcome message', recv => {
+      sessionId.current = recv['session_id'];
+      setChatMessages(prev => [
+        ...prev,
+        ...recv.data.map(t => ({ text: t, isUser: false }))
+      ]);
+      // 若有 initialPayload，交給後端分析
+      if (initialPayload) {
+        socket.emit('analyze_payload', { text: JSON.stringify(initialPayload), session_id: sessionId.current });
+      }
+    });
+
+    // 4⃣️ 一般日誌輸出
+    socket.on('log', data => {
+      setChatMessages(prev => [
+        ...prev,
+        ...data.data.map(t => ({ text: t, isUser: false }))
+      ]);
+    });
+
+    // 5⃣️ 允許再次輸入
+    socket.on('allow_user_input', () => setAllowUserInput(true));
+
+    socketRef.current = socket;
+
+    // 定期刷新 token（4 分鐘）
+    const tokenTimer = setInterval(() => {
+      RestApi.getADFsToken().then(token => {
+        socket.emit('update-token', { token, session_id: sessionId.current });
+      });
+    }, 240000);
+
+    return () => {
+      clearInterval(tokenTimer);
+      socket.close();
+    };
+  }, [initialPayload]);
+
+  /** 發送文字訊息至後端 */
+  const sendMessage = (text) => {
+    if (!socketRef.current) return;
+    socketRef.current.emit('message', {
+      query: text,
+      debug_mode: debugMode,
+      session_id: sessionId.current
+    });
+  };
+
+  /** ---------- UI 事件 ---------- */
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!message.trim()) return;
+
+    // 立刻把使用者訊息 push 到畫面
+    setChatMessages(prev => [...prev, { text: message, isUser: true }]);
+    setIsAnalysing(true);
+    setAllowUserInput(false);
+    const userText = message;
+    setMessage('');
+
+    // 發送到後端
+    sendMessage(userText);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit(e);
+    }
+  };
+
+  const handleStopGeneration = () => {
+    socketRef.current?.emit('stop_generation');
+    setAllowUserInput(true);
+    setIsAnalysing(false);
+  };
+
+  /** 從後端接收新訊息時，isAnalysing 結束 */
+  useEffect(() => {
+    if (!socketRef.current) return;
+    const socket = socketRef.current;
+    const onApiResult = (data) => {
+      setChatMessages(prev => [...prev, { text: data.data ?? data.text ?? '[no‑msg]', isUser: false }]);
+      setIsAnalysing(false);
+    };
+    socket.on('result', onApiResult);
+    socket.on('error', onApiResult);
+
+    return () => {
+      socket.off('result', onApiResult);
+      socket.off('error', onApiResult);
+    };
+  }, []);
+
+  /** ---------- Render ---------- */
+  return (
+    <div className="gpt-component">
+      <div className="gpt-header">
+        <div className="gpt-title">GPT Component</div>
+        <div className="gpt-actions">
+          <button className="action-button close-button" onClick={handleStopGeneration}>✕</button>
+        </div>
+      </div>
+
+      <div className="gpt-tabs">
+        <div className="gpt-tab gpt-tab-active">Chat</div>
+        <div className="gpt-tab" onClick={() => setDebugMode(!debugMode)}>
+          Debug&nbsp;{debugMode ? 'ON' : 'OFF'}
+        </div>
+      </div>
+
+      <div className="gpt-content">
+        <div className="gpt-chat-area">
+          {chatMessages.length === 0 && !isAnalysing && (
+            <div className="gpt-empty-state">
+              <div className="gpt-stars">✨</div>
+              <div className="gpt-greeting">
+                <h2>Hi User, I'm <span className="gpt-highlight">GPT Component</span>.</h2>
+                <p>Ask me anything</p>
+              </div>
+            </div>
+          )}
+
+          {chatMessages.map((msg, idx) => (
+            <div key={idx} className={`gpt-message ${msg.isUser ? 'gpt-user-message' : 'gpt-ai-message'}`}>
+              {msg.text}
+            </div>
+          ))}
+
+          {isAnalysing && (
+            <div className="analysing">
+              <div className="analysing-icon"><span style={{ color: '#fff' }}>✨</span></div>
+              <div className="analysing-text">Analysing...</div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="gpt-input-area">
+        <form onSubmit={handleSubmit}>
+          <div className="gpt-input-container">
+            <textarea
+              className="gpt-input"
+              placeholder="Ask a question"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              onKeyDown={handleKeyDown}
+              rows={4}
+              style={{ color: '#ffffff' }}
+              disabled={!allowUserInput}
+            />
+            <div className="gpt-input-buttons">
+              <button type="submit" className="gpt-send-btn" disabled={!allowUserInput}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M22 2L11 13" stroke="#A0A0A0" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="#A0A0A0" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </form>
+        <div className="gpt-disclaimer">*LLMs and GPTs can make mistakes. Verify all claims.</div>
+      </div>
+    </div>
+  );
+};
+
+export default GptComponent;
+
+```
